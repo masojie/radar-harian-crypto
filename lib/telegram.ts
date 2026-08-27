@@ -1,16 +1,22 @@
 /**
- * Kirim pesan ke channel Telegram lewat Bot API.
+ * Kirim pesan lewat Telegram Bot API.
  *
- * Butuh 2 environment variable di Vercel:
- * - TELEGRAM_BOT_TOKEN: token dari @BotFather
- * - TELEGRAM_CHAT_ID: chat ID channel tujuan (biasanya diawali -100)
- *
- * JANGAN pernah hardcode token/chat ID langsung di kode ini —
+ * Butuh environment variable TELEGRAM_BOT_TOKEN di Vercel (token dari
+ * @BotFather). JANGAN pernah hardcode token langsung di kode ini —
  * selalu lewat env var, biar gak kebocor kalau di-push ke GitHub.
+ *
+ * @param text - isi pesan (format Markdown)
+ * @param targetChatId - chat ID tujuan. Kalau dikosongkan, pakai
+ *   TELEGRAM_CHAT_ID dari env var (perilaku lama, buat kirim ke channel
+ *   radar harian). Diisi eksplisit dipakai webhook buat balas ke chat
+ *   ID pengirim pesan, yang beda-beda tiap user.
  */
-export async function sendTelegramMessage(text: string): Promise<void> {
+export async function sendTelegramMessage(
+  text: string,
+  targetChatId?: string
+): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const chatId = targetChatId ?? process.env.TELEGRAM_CHAT_ID;
 
   if (!token || !chatId) {
     throw new Error(

@@ -88,3 +88,42 @@ export async function getTopVolumeCoins(limit = 5): Promise<TopCoin[]> {
 
   return sorted.slice(0, limit);
 }
+
+/**
+ * Ambil harga satu coin spesifik berdasarkan simbolnya (mis. "btc", "BTC",
+ * "sol"). Dipakai buat command /harga <coin> di webhook Telegram.
+ *
+ * Balikin null kalau simbolnya gak ketemu di daftar pair Indodax, biar
+ * pemanggil bisa kasih pesan "coin tidak ditemukan" yang jelas ke user,
+ * bukan error teknis yang bikin bingung.
+ */
+export async function getCoinPrice(symbol: string): Promise<TopCoin | null> {
+  const res = await fetch(INDODAX_SUMMARIES_URL, {
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `Indodax API gagal merespons: ${res.status} ${res.statusText}`
+    );
+  }
+
+  const data: IndodaxSummariesResponse = await res.json();
+
+  const normalizedSymbol = symbol.trim().toLowerCase();
+  const pairId = `${normalizedSymbol}_idr`;
+
+  const ticker = data.tickers[pairId];
+  if (!ticker) {
+    return null;
+  }
+
+  return {
+    pairId,
+    symbol: normalizedSymbol.toUpperCase(),
+    lastPrice: Number(ticker.last),
+    buyPrice: Number(ticker.buy),
+    sellPrice: Number(ticker.sell),
+    volumeIdr: Number(ticker.vol_idr),
+  } satisfies TopCoin;
+}

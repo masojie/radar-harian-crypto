@@ -71,3 +71,27 @@ export function buildRadarMessage(coins: TopCoin[]): string {
     `\n\n_Data: Indodax API, diurutkan berdasarkan volume transaksi 24 jam._`
   );
 }
+
+
+/**
+ * Susun pesan balasan buat command /harga <coin>.
+ * Dipakai webhook, jadi harus tetap enak dibaca meskipun cuma satu coin
+ * (beda dari buildRadarMessage yang emang buat daftar top N).
+ */
+export function buildCoinPriceMessage(coin: TopCoin): string {
+  const now = new Date();
+  const waktuJakarta = now.toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+
+  return (
+    `💰 *${coin.symbol}*\n` +
+    `🕐 ${waktuJakarta} WIB\n\n` +
+    `Harga: ${formatRupiah(coin.lastPrice)}\n` +
+    `Beli: ${formatRupiah(coin.buyPrice)}\n` +
+    `Jual: ${formatRupiah(coin.sellPrice)}\n` +
+    `Volume 24 Jam: ${formatVolumeSingkat(coin.volumeIdr)}`
+  );
+}
