@@ -57,6 +57,7 @@ const SWING_PAIRS = ["BTCIDR", "ETHIDR", "SOLIDR"];
  * Command yang didukung sekarang:
  * - /harga <coin>   contoh: /harga btc, /harga sol
  * - /analisa         swing harian BTC, ETH, SOL sekaligus
+ * - /analisa <coin>  swing harian untuk 1 coin spesifik, contoh: /analisa sui
  */
 export async function POST(request: Request) {
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -83,21 +84,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  // Command /analisa: jalankan analisis swing untuk BTC, ETH, SOL sekaligus
-  if (/^\/analisa(?:@\w+)?/i.test(text)) {
+  // Command /analisa: tanpa argumen = BTC/ETH/SOL default,
+  // dengan argumen (contoh: /analisa sui) = analisis 1 coin spesifik saja
+  const analisaMatch = text.match(/^\/analisa(?:@\w+)?(?:\s+(\S+))?/i);
+  if (analisaMatch) {
+    const coinArg = analisaMatch[1];
+    const pairsToAnalyze = coinArg
+      ? [`${coinArg.toUpperCase()}IDR`]
+      : SWING_PAIRS;
+
     try {
       const results = await Promise.all(
-        SWING_PAIRS.map((pair) => analyzeSwing(pair))
+        pairsToAnalyze.map((pair) => analyzeSwing(pair))
       );
       await sendTelegramMessage(buildSwingMessage(results), String(chatId));
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown error";
       console.error("Webhook /analisa gagal:", message);
-      await sendTelegramMessage(
-        "Gagal menjalankan analisa, coba lagi sebentar lagi.",
-        String(chatId)
-      ).catch(() => {});
+
+      const notFoundMsg = coinArg
+        ? `Coin *${coinArg.toUpperCase()}* tidak ditemukan di Indodax, atau data candle-nya belum cukup untuk dianalisis.`
+        : "Gagal menjalankan analisa, coba lagi sebentar lagi.";
+
+      await sendTelegramMessage(notFoundMsg, String(chatId)).catch(() => {});
     }
     return NextResponse.json({ ok: true });
   }
