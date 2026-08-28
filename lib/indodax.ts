@@ -127,3 +127,214 @@ export async function getCoinPrice(symbol: string): Promise<TopCoin | null> {
     volumeIdr: Number(ticker.vol_idr),
   } satisfies TopCoin;
 }
+// ============================================================
+// TAMBAHAN UNTUK lib/indodax.ts
+// Copy-paste kode di bawah ini ke BAGIAN PALING BAWAH file
+// lib/indodax.ts yang sudah ada. Jangan hapus kode yang lama.
+// ============================================================
+
+export interface Candle {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+/**
+ * Ambil data candle OHLC harian dari Indodax lewat endpoint
+ * tradingview/history_v2. Endpoint ini publik, gratis, tanpa API key.
+ *
+ * @param pairSymbol - format Indodax, contoh: "BTCIDR", "ETHIDR", "SOLIDR"
+ * @param days - berapa hari ke belakang yang mau diambil (default 90,
+ *               cukup untuk hitung EMA50 dengan buffer)
+ */
+export async function getDailyCandles(
+  pairSymbol: string,
+  days = 90
+): Promise<Candle[]> {
+  const to = Math.floor(Date.now() / 1000);
+  const from = to - days * 24 * 60 * 60;
+
+  const url = `https://indodax.com/tradingview/history_v2?from=${from}&to=${to}&tf=1D&symbol=${pairSymbol.toUpperCase()}`;
+
+  const res = await fetch(url, { cache: "no-store" });
+
+  if (!res.ok) {
+    throw new Error(
+      `Indodax history API gagal merespons: ${res.status} ${res.statusText}`
+    );
+  }
+
+  const raw: Array<{
+    Time: number;
+    Open: number;
+    High: number;
+    Low: number;
+    Close: number;
+    Volume: string;
+  }> = await res.json();
+
+  return raw.map((c) => ({
+    time: c.Time,
+    open: c.Open,
+    high: c.High,
+    low: c.Low,
+    close: c.Close,
+    volume: Number(c.Volume),
+  }));
+}
+
+/**
+ * Hitung EMA (Exponential Moving Average) dari array harga close.
+ * Mengembalikan array EMA yang sepanjang input, dengan nilai awal
+ * (sebelum cukup data) diisi menggunakan SMA sebagai seed.
+ */
+export function calculateEMA(closes: number[], period: number): number[] {
+  const ema: number[] = [];
+  const multiplier = 2 / (period + 1);
+
+  // Seed pertama pakai SMA dari 'period' candle pertama
+  const seedSma =
+    closes.slice(0, period).reduce((sum, v) => sum + v, 0) / period;
+
+  for (let i = 0; i < closes.length; i++) {
+    if (i < period - 1) {
+      ema.push(NaN); // belum cukup data
+    } else if (i === period - 1) {
+      ema.push(seedSma);
+    } else {
+      const prevEma = ema[i - 1];
+      ema.push((closes[i] - prevEma) * multiplier + prevEma);
+    }
+  }
+
+  return ema;
+}
+
+/**
+ * Hitung RSI (Relative Strength Index) dengan metode Wilder's smoothing,
+ * standar yang dipakai kebanyakan platform charting (termasuk TradingView).
+ */
+export function calculateRSI(closes: number[], period = 14): number[] {
+  const rsi: number[] = new Array(closes.length).fill(NaN);
+  if (closes.length < period + 1) return rsi;
+
+  let avgGain = 0;
+  let avgLoss = 0;
+
+  for (let i = 1; i <= period; i++) {
+    const change = closes[i] - closes[i - 1];
+    if (change >= 0) avgGain += change;
+    else avgLoss -= change;
+  }
+  avgGain /= period;
+  avgLoss /= period;
+
+  rsi[period] =
+    avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+
+  for (let i = period + 1; i < closes.length; i++) {
+    const change = closes[i] - closes[i - 1];
+    const gain = change > 0 ? change : 0;
+    const loss = change < 0 ? -change : 0;
+
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+
+    rsi[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+
+  return rsi;
+}
+
+/**
+ * Hitung MACD standar (12, 26, 9): garis MACD, garis signal, dan histogram.
+ */
+export function calculateMACD(closes: number[]) {
+  const ema12 = calculateEMA(closes, 12);
+  const ema26 = calculateEMA(closes, 26);
+
+  const macdLine = closes.map((_, i) =>
+    isNaN(ema12[i]) || isNaN(ema26[i]) ? NaN : ema12[i] - ema26[i]
+  );
+
+  // Signal line = EMA9 dari macdLine, tapi hanya dari titik yang valid
+  const validMacd = macdLine.filter((v) => !isNaN(v));
+  const signalRaw = calculateEMA(validMacd, 9);
+
+  // Map balik signal ke index asli
+  const signalLine: number[] = new Array(closes.length).fill(NaN);
+  let validIdx = 0;
+  for (let i = 0; i < closes.length; i++) {
+    if (!isNaN(macdLine[i])) {
+      signalLine[i] = signalRaw[validIdx];
+      validIdx++;
+    }
+  }
+
+  const histogram = closes.map((_, i) =>
+    isNaN(macdLine[i]) || isNaN(signalLine[i])
+      ? NaN
+      : macdLine[i] - signalLine[i]
+  );
+
+  return { macdLine, signalLine, histogram };
+}
+
+export interface SwingAnalysis {
+  symbol: string;
+  lastClose: number;
+  ema20: number;
+  ema50: number;
+  rsi14: number;
+  macdLine: number;
+  macdSignal: number;
+  macdHistogram: number;
+  trend: "bullish" | "bearish" | "netral";
+  rsiCondition: "overbought" | "oversold" | "netral";
+}
+
+/**
+ * Analisis swing lengkap untuk satu pair: ambil candle, hitung semua
+ * indikator, dan simpulkan kondisi tren + momentum saat ini.
+ */
+export async function analyzeSwing(
+  pairSymbol: string
+): Promise<SwingAnalysis> {
+  const candles = await getDailyCandles(pairSymbol, 90);
+  const closes = candles.map((c) => c.close);
+
+  const ema20Arr = calculateEMA(closes, 20);
+  const ema50Arr = calculateEMA(closes, 50);
+  const rsiArr = calculateRSI(closes, 14);
+  const { macdLine, signalLine, histogram } = calculateMACD(closes);
+
+  const last = closes.length - 1;
+
+  const ema20 = ema20Arr[last];
+  const ema50 = ema50Arr[last];
+  const rsi14 = rsiArr[last];
+
+  let trend: SwingAnalysis["trend"] = "netral";
+  if (closes[last] > ema20 && ema20 > ema50) trend = "bullish";
+  else if (closes[last] < ema20 && ema20 < ema50) trend = "bearish";
+
+  let rsiCondition: SwingAnalysis["rsiCondition"] = "netral";
+  if (rsi14 >= 70) rsiCondition = "overbought";
+  else if (rsi14 <= 30) rsiCondition = "oversold";
+
+  return {
+    symbol: pairSymbol.toUpperCase(),
+    lastClose: closes[last],
+    ema20,
+    ema50,
+    rsi14,
+    macdLine: macdLine[last],
+    macdSignal: signalLine[last],
+    macdHistogram: histogram[last],
+    trend,
+    rsiCondition,
+  };
+}
