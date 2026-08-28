@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCoinPrice } from "@/lib/indodax";
 import { buildCoinPriceMessage } from "@/lib/format";
 import { sendTelegramMessage } from "@/lib/telegram";
+import { analyzeSwing, SwingAnalysis } from "@/lib/indodax";
 
 // Bentuk minimal dari update yang dikirim Telegram ke webhook kita.
 // Telegram sebenarnya kirim lebih banyak field, tapi kita cuma butuh ini.
@@ -14,6 +15,40 @@ interface TelegramUpdate {
   };
 }
 
+
+function formatRupiah(n: number): string {
+  return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
+}
+
+function buildSwingMessage(results: SwingAnalysis[]): string {
+  const lines: string[] = ["\ud83d\udcca *ANALISA SWING HARIAN*\n"];
+
+  for (const r of results) {
+    const trendEmoji =
+      r.trend === "bullish" ? "\ud83d\udfe2" : r.trend === "bearish" ? "\ud83d\udd34" : "\u26aa";
+    const rsiWarning =
+      r.rsiCondition === "overbought"
+        ? " \u26a0\ufe0f overbought"
+        : r.rsiCondition === "oversold"
+        ? " \u26a0\ufe0f oversold"
+        : "";
+
+    lines.push(
+      `${trendEmoji} *${r.symbol}*`,
+      `Harga: Rp ${formatRupiah(r.lastClose)}`,
+      `RSI14: ${r.rsi14.toFixed(1)}${rsiWarning}`,
+      `MACD: ${r.macdLine.toFixed(2)} vs Signal ${r.macdSignal.toFixed(2)}`,
+      `Tren: ${r.trend}`,
+      ""
+    );
+  }
+
+  lines.push("_Data asli Indodax (Rupiah). Bukan saran finansial._");
+  return lines.join("\n");
+}
+
+const SWING_PAIRS = ["BTCIDR", "ETHIDR", "SOLIDR"];
+
 /**
  * Endpoint ini didaftarkan ke Telegram sebagai webhook. Telegram akan
  * POST ke sini setiap kali ada pesan baru masuk ke bot, termasuk
@@ -21,6 +56,7 @@ interface TelegramUpdate {
  *
  * Command yang didukung sekarang:
  * - /harga <coin>   contoh: /harga btc, /harga sol
+ * - /analisa         swing harian BTC, ETH, SOL sekaligus
  */
 export async function POST(request: Request) {
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -44,6 +80,25 @@ export async function POST(request: Request) {
   const text = update.message?.text;
 
   if (!chatId || !text) {
+    return NextResponse.json({ ok: true });
+  }
+
+  // Command /analisa: jalankan analisis swing untuk BTC, ETH, SOL sekaligus
+  if (/^\/analisa(?:@\w+)?/i.test(text)) {
+    try {
+      const results = await Promise.all(
+        SWING_PAIRS.map((pair) => analyzeSwing(pair))
+      );
+      await sendTelegramMessage(buildSwingMessage(results), String(chatId));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown error";
+      console.error("Webhook /analisa gagal:", message);
+      await sendTelegramMessage(
+        "Gagal menjalankan analisa, coba lagi sebentar lagi.",
+        String(chatId)
+      ).catch(() => {});
+    }
     return NextResponse.json({ ok: true });
   }
 
