@@ -53,20 +53,20 @@ function buildAnalysisMessage(results: SwingAnalysis[]): string {
  * lewat Vercel Cron kalau mau otomatis harian.
  *
  * Query param opsional: ?chat_id=xxx untuk override tujuan pesan.
- * Kalau tidak diisi, pakai TELEGRAM_DEFAULT_CHAT_ID dari env.
+ * Kalau tidak diisi, pakai TELEGRAM_CHAT_ID dari env.
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const chatId =
     searchParams.get("chat_id") ??
-    process.env.TELEGRAM_DEFAULT_CHAT_ID ??
+    process.env.TELEGRAM_CHAT_ID ??
     "";
 
   if (!chatId) {
     return NextResponse.json(
       {
         error:
-          "chat_id tidak diberikan dan TELEGRAM_DEFAULT_CHAT_ID tidak diset di environment",
+          "chat_id tidak diberikan dan TELEGRAM_CHAT_ID tidak diset di environment",
       },
       { status: 400 }
     );
