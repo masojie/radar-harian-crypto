@@ -39,12 +39,35 @@ function buildSwingMessage(results: SwingAnalysis[]): string {
       `RSI14: ${r.rsi14.toFixed(1)}${rsiWarning}`,
       `MACD: ${r.macdLine.toFixed(2)} vs Signal ${r.macdSignal.toFixed(2)}`,
       `Tren: ${r.trend}`,
+      plainExplanation(r.rsi14, r.trend),
       ""
     );
   }
 
   lines.push("_Data asli Indodax (Rupiah). Bukan saran finansial._");
   return lines.join("\n");
+}
+
+function plainExplanation(rsi: number, trend: string): string {
+  if (rsi >= 80) {
+    return "\ud83d\udcac Sudah naik sangat tinggi dan rawan koreksi tajam. Kurang ideal untuk beli baru sekarang.";
+  }
+  if (rsi >= 70) {
+    return "\ud83d\udcac Sudah naik cukup tinggi, rawan koreksi. Kalau punya profit, ini saat yang oke untuk ambil sebagian.";
+  }
+  if (rsi <= 20) {
+    return "\ud83d\udcac Sudah turun sangat dalam, bisa jadi peluang pantulan, tapi juga bisa terus turun. Hati-hati.";
+  }
+  if (rsi <= 30) {
+    return "\ud83d\udcac Sudah turun cukup dalam, mulai masuk area murah secara historis.";
+  }
+  if (trend === "bullish") {
+    return "\ud83d\udcac Momentum masih sehat, belum terlalu panas atau dingin.";
+  }
+  if (trend === "bearish") {
+    return "\ud83d\udcac Momentum sedang melemah, harga cenderung tertekan.";
+  }
+  return "\ud83d\udcac Momentum netral, belum ada arah kuat ke satu sisi.";
 }
 
 const SWING_PAIRS = ["BTCIDR", "ETHIDR", "SOLIDR"];
