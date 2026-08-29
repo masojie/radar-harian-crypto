@@ -294,6 +294,13 @@ export interface SwingAnalysis {
   macdHistogram: number;
   trend: "bullish" | "bearish" | "netral";
   rsiCondition: "overbought" | "oversold" | "netral";
+  // Field baru: deteksi candle hari ini yang belum closed sedang
+  // bergerak jauh dari indikator yang dihitung dari candle-candle
+  // yang sudah closed. Ini menutup celah di mana crash/pump
+  // mendadak hari ini belum sempat terbaca RSI/EMA (yang masih
+  // dihitung dari histori "kemarin dan sebelumnya").
+  intradayChangePercent: number;
+  intradayWarning: boolean;
 }
 
 /**
@@ -304,7 +311,34 @@ export async function analyzeSwing(
   pairSymbol: string
 ): Promise<SwingAnalysis> {
   const candles = await getDailyCandles(pairSymbol, 90);
-  const closes = candles.map((c) => c.close);
+
+  if (candles.length === 0) {
+    throw new Error(`Tidak ada data candle untuk ${pairSymbol}`);
+  }
+
+  // Candle terakhir dari Indodax adalah candle HARI INI yang belum
+  // "closed" - dia terus berubah sepanjang hari sampai hari itu
+  // selesai. Kalau kita masukkan candle ini ke hitungan EMA/RSI,
+  // hasilnya bisa menyesatkan: pergerakan besar yang baru saja
+  // terjadi (misal crash -40% dalam beberapa jam) akan "tenggelam"
+  // di rata-rata historis, membuat RSI dan tren terbaca netral
+  // padahal harga real-time sedang jatuh tajam.
+  //
+  // Solusinya: hitung semua indikator dari candle yang SUDAH
+  // closed saja (kemarin dan sebelumnya). Baru setelah itu kita
+  // bandingkan harga real-time saat ini terhadap candle kemarin
+  // itu, untuk mendeteksi apakah sedang terjadi pergerakan besar
+  // yang belum tertangkap indikator.
+  const closedCandles = candles.slice(0, -1);
+  const todayCandle = candles[candles.length - 1];
+
+  // Kalau candle yang sudah closed kurang dari yang dibutuhkan
+  // EMA50 (butuh minimal 50 titik), pakai semua candle termasuk
+  // hari ini sebagai fallback - lebih baik ada hasil dengan
+  // catatan, daripada gagal total untuk coin yang baru listing.
+  const candlesToAnalyze =
+    closedCandles.length >= 50 ? closedCandles : candles;
+  const closes = candlesToAnalyze.map((c) => c.close);
 
   const ema20Arr = calculateEMA(closes, 20);
   const ema50Arr = calculateEMA(closes, 50);
@@ -325,9 +359,26 @@ export async function analyzeSwing(
   if (rsi14 >= 70) rsiCondition = "overbought";
   else if (rsi14 <= 30) rsiCondition = "oversold";
 
+  // Deteksi pergerakan besar hari ini yang belum masuk hitungan
+  // indikator di atas. Bandingkan harga penutupan candle terakhir
+  // yang sudah closed (basis "kemarin") dengan harga saat ini
+  // (close dari candle hari ini yang sedang berjalan).
+  const yesterdayClose = closes[last];
+  const currentPrice = todayCandle.close;
+  const intradayChangePercent =
+    yesterdayClose === 0
+      ? 0
+      : ((currentPrice - yesterdayClose) / yesterdayClose) * 100;
+
+  // Ambang batas 15%: pergerakan intraday sebesar ini pada crypto
+  // sudah cukup signifikan untuk layak di-flag terpisah dari
+  // kesimpulan tren harian biasa, tanpa terlalu sering false-alarm
+  // pada fluktuasi normal.
+  const intradayWarning = Math.abs(intradayChangePercent) >= 15;
+
   return {
     symbol: pairSymbol.toUpperCase(),
-    lastClose: closes[last],
+    lastClose: currentPrice,
     ema20,
     ema50,
     rsi14,
@@ -336,5 +387,7 @@ export async function analyzeSwing(
     macdHistogram: histogram[last],
     trend,
     rsiCondition,
+    intradayChangePercent,
+    intradayWarning,
   };
 }
