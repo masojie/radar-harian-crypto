@@ -1,7 +1,7 @@
-// ============================================================
+// ===========================================================
 // FILE BARU: app/api/analisa/route.ts
 // Buat file baru di path ini (folder "analisa" di dalam app/api/)
-// ============================================================
+// ===========================================================
 
 import { NextResponse } from "next/server";
 import { analyzeSwing, SwingAnalysis } from "@/lib/indodax";
@@ -16,17 +16,39 @@ function formatNumber(n: number): string {
   );
 }
 
+function plainExplanation(rsi: number, trend: string): string {
+  if (rsi >= 80) {
+    return "\ud83d\udcac Sudah naik sangat tinggi dan rawan koreksi tajam. Kurang ideal untuk beli baru sekarang.";
+  }
+  if (rsi >= 70) {
+    return "\ud83d\udcac Sudah naik cukup tinggi, rawan koreksi. Kalau punya profit, ini saat yang oke untuk ambil sebagian.";
+  }
+  if (rsi <= 20) {
+    return "\ud83d\udcac Sudah turun sangat dalam, bisa jadi peluang pantulan, tapi juga bisa terus turun. Hati-hati.";
+  }
+  if (rsi <= 30) {
+    return "\ud83d\udcac Sudah turun cukup dalam, mulai masuk area murah secara historis.";
+  }
+  if (trend === "bullish") {
+    return "\ud83d\udcac Momentum masih sehat, belum terlalu panas atau dingin.";
+  }
+  if (trend === "bearish") {
+    return "\ud83d\udcac Momentum sedang melemah, harga cenderung tertekan.";
+  }
+  return "\ud83d\udcac Momentum netral, belum ada arah kuat ke satu sisi.";
+}
+
 function buildAnalysisMessage(results: SwingAnalysis[]): string {
-  const lines: string[] = ["📊 *ANALISA SWING HARIAN*\n"];
+  const lines: string[] = ["\ud83d\udcca *ANALISA SWING HARIAN*\n"];
 
   for (const r of results) {
     const trendEmoji =
-      r.trend === "bullish" ? "🟢" : r.trend === "bearish" ? "🔴" : "⚪";
+      r.trend === "bullish" ? "\ud83d\udfe2" : r.trend === "bearish" ? "\ud83d\udd34" : "\u26aa";
     const rsiWarning =
       r.rsiCondition === "overbought"
-        ? " ⚠️ overbought"
+        ? " \u26a0\ufe0f overbought"
         : r.rsiCondition === "oversold"
-        ? " ⚠️ oversold"
+        ? " \u26a0\ufe0f oversold"
         : "";
 
     lines.push(
@@ -36,6 +58,7 @@ function buildAnalysisMessage(results: SwingAnalysis[]): string {
       `RSI14: ${r.rsi14.toFixed(1)}${rsiWarning}`,
       `MACD: ${r.macdLine.toFixed(2)} vs Signal ${r.macdSignal.toFixed(2)}`,
       `Tren: ${r.trend}`,
+      plainExplanation(r.rsi14, r.trend),
       ""
     );
   }
