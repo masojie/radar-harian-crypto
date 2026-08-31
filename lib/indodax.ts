@@ -391,3 +391,194 @@ export async function analyzeSwing(
     intradayWarning,
   };
 }
+
+
+// ============================================================
+// TAMBAHAN UNTUK lib/indodax.ts
+// Sistem multi-timeframe voting: 1m, 5m, 15m, 30m, 1h
+// Copy-paste ke BAGIAN PALING BAWAH file yang sudah ada.
+// ============================================================
+
+// Peta nama timeframe yang enak dibaca manusia ke parameter
+// "tf" yang dipahami endpoint Indodax (dalam satuan menit,
+// sesuai skala standar TradingView: 1,5,15,30,60,240,1D,...)
+const MTF_TIMEFRAMES = [
+  { label: "1m", tf: "1", minutes: 1 },
+  { label: "5m", tf: "5", minutes: 5 },
+  { label: "15m", tf: "15", minutes: 15 },
+  { label: "30m", tf: "30", minutes: 30 },
+  { label: "1h", tf: "60", minutes: 60 },
+] as const;
+
+/**
+ * Ambil candle untuk timeframe intraday (bukan harian). Mirip
+ * getDailyCandles, tapi parameter tf-nya angka menit langsung,
+ * dan rentang waktu (from/to) dihitung dari jumlah candle yang
+ * diminta dikali panjang tiap candle dalam menit - supaya kita
+ * tidak menarik data jauh lebih banyak dari yang dibutuhkan.
+ *
+ * @param pairSymbol - contoh: "BTCIDR"
+ * @param tf - parameter tf mentah untuk Indodax, contoh: "15" untuk 15 menit
+ * @param candleCount - berapa candle ke belakang yang mau diambil
+ */
+async function getIntradayCandles(
+  pairSymbol: string,
+  tf: string,
+  candleCount: number
+): Promise<Candle[]> {
+  const tfMinutes = Number(tf);
+  const to = Math.floor(Date.now() / 1000);
+  // Beri buffer 3x lipat supaya perhitungan EMA50 di dalamnya
+  // punya cukup data historis sebelum candle yang benar-benar
+  // kita analisis (sama seperti alasan buffer 90 hari di harian).
+  const from = to - candleCount * tfMinutes * 60 * 3;
+
+  const url = `https://indodax.com/tradingview/history_v2?from=${from}&to=${to}&tf=${tf}&symbol=${pairSymbol.toUpperCase()}`;
+
+  const res = await fetch(url, { cache: "no-store" });
+
+  if (!res.ok) {
+    throw new Error(
+      `Indodax history API gagal merespons (tf=${tf}): ${res.status} ${res.statusText}`
+    );
+  }
+
+  const raw: Array<{
+    Time: number;
+    Open: number;
+    High: number;
+    Low: number;
+    Close: number;
+    Volume: string;
+  }> = await res.json();
+
+  return raw.map((c) => ({
+    time: c.Time,
+    open: c.Open,
+    high: c.High,
+    low: c.Low,
+    close: c.Close,
+    volume: Number(c.Volume),
+  }));
+}
+
+export interface TimeframeVote {
+  label: string; // "1m", "5m", dst
+  emaBullish: boolean; // EMA9 > EMA50 di timeframe ini
+  rsiBullish: boolean; // RSI14 >= 50 di timeframe ini
+  rsiValue: number;
+  price: number;
+}
+
+export interface MultiTimeframeSignal {
+  symbol: string;
+  currentPrice: number;
+  votes: TimeframeVote[];
+  emaBullishCount: number; // dari 5, berapa yang EMA-nya bullish
+  rsiBullishCount: number; // dari 5, berapa yang RSI-nya bullish
+  signal: "BUY" | "SELL" | "TUNGGU";
+  // Alasan singkat kenapa signal ini yang keluar, dipakai untuk
+  // ditampilkan ke user supaya keputusan bot bisa dipahami, bukan
+  // cuma diterima mentah-mentah.
+  reason: string;
+}
+
+// Ambang voting: dari 5 timeframe, minimal berapa yang harus
+// searah supaya dianggap sinyal valid. Angka ini yang diminta
+// user sendiri: minimal 3 dari 5 (mayoritas sederhana).
+const MIN_VOTES_FOR_SIGNAL = 3;
+
+/**
+ * Jalankan analisis EMA9/EMA50 + RSI14 di 5 timeframe sekaligus
+ * (1m, 5m, 15m, 30m, 1h), lalu voting: kalau minimal 3 dari 5
+ * timeframe searah bullish di EMA MAUPUN RSI, sinyal BUY valid.
+ * Simetris untuk SELL. Kalau belum ada yang mencapai ambang itu
+ * di kedua sisi, hasilnya TUNGGU - bot jujur bilang belum cukup
+ * konfirmasi, bukan memaksakan sinyal.
+ */
+export async function analyzeMultiTimeframe(
+  pairSymbol: string
+): Promise<MultiTimeframeSignal> {
+  // Ambil candle dari kelima timeframe secara paralel, bukan
+  // berurutan, supaya total waktu tunggu tidak menumpuk 5x lipat.
+  const results = await Promise.all(
+    MTF_TIMEFRAMES.map(async (tfConfig) => {
+      // 60 candle cukup untuk EMA50 + buffer wajar di semua tf ini.
+      const candles = await getIntradayCandles(pairSymbol, tfConfig.tf, 60);
+
+      if (candles.length === 0) {
+        throw new Error(
+          `Tidak ada data candle untuk ${pairSymbol} di timeframe ${tfConfig.label}`
+        );
+      }
+
+      // Sama seperti analyzeSwing: exclude candle terakhir yang
+      // belum closed dari perhitungan indikator, supaya pergerakan
+      // yang belum selesai tidak menyesatkan EMA/RSI. Untuk
+      // timeframe pendek ini bedanya cuma soal detik/menit
+      // terakhir, tapi prinsipnya tetap konsisten.
+      const closedCandles = candles.slice(0, -1);
+      const candlesToUse =
+        closedCandles.length >= 50 ? closedCandles : candles;
+      const closes = candlesToUse.map((c) => c.close);
+
+      const ema9Arr = calculateEMA(closes, 9);
+      const ema50Arr = calculateEMA(closes, 50);
+      const rsiArr = calculateRSI(closes, 14);
+
+      const last = closes.length - 1;
+      const ema9 = ema9Arr[last];
+      const ema50 = ema50Arr[last];
+      const rsiValue = rsiArr[last];
+
+      const vote: TimeframeVote = {
+        label: tfConfig.label,
+        emaBullish: ema9 > ema50,
+        rsiBullish: rsiValue >= 50,
+        rsiValue,
+        price: candles[candles.length - 1].close,
+      };
+
+      return vote;
+    })
+  );
+
+  const emaBullishCount = results.filter((v) => v.emaBullish).length;
+  const rsiBullishCount = results.filter((v) => v.rsiBullish).length;
+  const emaBearishCount = results.length - emaBullishCount;
+  const rsiBearishCount = results.length - rsiBullishCount;
+
+  let signal: MultiTimeframeSignal["signal"] = "TUNGGU";
+  let reason = "";
+
+  const buyValid =
+    emaBullishCount >= MIN_VOTES_FOR_SIGNAL &&
+    rsiBullishCount >= MIN_VOTES_FOR_SIGNAL;
+  const sellValid =
+    emaBearishCount >= MIN_VOTES_FOR_SIGNAL &&
+    rsiBearishCount >= MIN_VOTES_FOR_SIGNAL;
+
+  if (buyValid) {
+    signal = "BUY";
+    reason = `EMA bullish di ${emaBullishCount}/5 timeframe, RSI bullish di ${rsiBullishCount}/5 timeframe - kombinasi sudah mencapai ambang minimal (${MIN_VOTES_FOR_SIGNAL}/5).`;
+  } else if (sellValid) {
+    signal = "SELL";
+    reason = `EMA bearish di ${emaBearishCount}/5 timeframe, RSI bearish di ${rsiBearishCount}/5 timeframe - kombinasi sudah mencapai ambang minimal (${MIN_VOTES_FOR_SIGNAL}/5).`;
+  } else {
+    reason = `Belum ada arah yang mencapai ${MIN_VOTES_FOR_SIGNAL}/5 di kedua indikator sekaligus (EMA: ${emaBullishCount} bullish vs ${emaBearishCount} bearish, RSI: ${rsiBullishCount} bullish vs ${rsiBearishCount} bearish). Tunggu konfirmasi lebih lanjut sebelum entry.`;
+  }
+
+  // Harga acuan: pakai candle 1 menit sebagai yang paling
+  // mendekati harga real-time saat ini.
+  const currentPrice = results.find((v) => v.label === "1m")?.price ?? results[0].price;
+
+  return {
+    symbol: pairSymbol.toUpperCase(),
+    currentPrice,
+    votes: results,
+    emaBullishCount,
+    rsiBullishCount,
+    signal,
+    reason,
+  };
+}
