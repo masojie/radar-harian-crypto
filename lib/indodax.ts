@@ -46,7 +46,7 @@ export interface TopCoin {
 export async function getTopVolumeCoins(limit = 5): Promise<TopCoin[]> {
   const res = await fetch(INDODAX_SUMMARIES_URL, {
     // Next.js: jangan cache di level fetch, karena kita udah atur
-    // frekuensi update lewat cron job di level yang lebih atas.
+    // frekuen|ési update lewat cron job di level yang lebih atas.
     cache: "no-store",
   });
 
@@ -295,7 +295,7 @@ export interface SwingAnalysis {
   trend: "bullish" | "bearish" | "netral";
   rsiCondition: "overbought" | "oversold" | "netral";
   // Field baru: deteksi candle hari ini yang belum closed sedang
-  // bergerak jauh dari indikator yang dihitung dari candle-candle
+  // bergerak jeuh dari indikator yang dihitung dari candle-candle
   // yang sudah closed. Ini menutup celah di mana crash/pump
   // mendadak hari ini belum sempat terbaca RSI/EMA (yang masih
   // dihitung dari histori "kemarin dan sebelumnya").
@@ -393,7 +393,7 @@ export async function analyzeSwing(
 }
 
 
-// ============================================================
+// =============================================================
 // TAMBAHAN UNTUK lib/indodax.ts
 // Sistem multi-timeframe voting: 1m, 5m, 15m, 30m, 1h
 // Copy-paste ke BAGIAN PALING BAWAH file yang sudah ada.
@@ -421,7 +421,7 @@ const MTF_TIMEFRAMES = [
  * @param tf - parameter tf mentah untuk Indodax, contoh: "15" untuk 15 menit
  * @param candleCount - berapa candle ke belakang yang mau diambil
  */
-async function getIntradayCandles(
+export async function getIntradayCandles(
   pairSymbol: string,
   tf: string,
   candleCount: number
@@ -580,5 +580,97 @@ export async function analyzeMultiTimeframe(
     rsiBullishCount,
     signal,
     reason,
+  };
+}
+
+
+// ============================================================
+// TAMBAHAN UNTUK lib/indodax.ts
+// Level TP/SL untuk logic SPOT + konteks Fibonacci retracement
+// Copy-paste ke BAGIAN PALING BAWAH file yang sudah ada.
+// ============================================================
+
+export interface FibonacciLevels {
+  swingHigh: number;
+  swingLow: number;
+  level236: number;
+  level382: number;
+  level500: number;
+  level618: number;
+}
+
+/**
+ * Cari titik swing high (tertinggi) dan swing low (terendah) dari
+ * sejumlah candle terakhir, lalu hitung level Fibonacci retracement
+ * standar (23.6%, 38.2%, 50%, 61.8%) di antara keduanya.
+ *
+ * Fibonacci di sini dipakai sebagai KONTEKS pendukung, bukan basis
+ * utama TP - membantu user melihat apakah level TP1-3 (yang basisnya
+ * persentase tetap) kebetulan berdekatan dengan level Fibonacci
+ * penting, yang jadi konfirmasi tambahan.
+ */
+function calculateFibonacciLevels(candles: Candle[]): FibonacciLevels {
+  const highs = candles.map((c) => c.high);
+  const lows = candles.map((c) => c.low);
+
+  const swingHigh = Math.max(...highs);
+  const swingLow = Math.min(...lows);
+  const range = swingHigh - swingLow;
+
+  return {
+    swingHigh,
+    swingLow,
+    level236: swingHigh - range * 0.236,
+    level382: swingHigh - range * 0.382,
+    level500: swingHigh - range * 0.5,
+    level618: swingHigh - range * 0.618,
+  };
+}
+
+export interface SpotPositionLevels {
+  entry: number;
+  stopLoss: number;
+  takeProfit1: number; // +10% dari entry
+  takeProfit2: number; // +20% dari entry
+  takeProfit3: number; // +30% dari entry
+  fibonacci: FibonacciLevels;
+}
+
+/**
+ * Hitung level posisi SPOT: entry (harga saat ini), stop loss
+ * (-1%), dan tiga target take profit bertingkat (+10%, +20%, +30%).
+ * Fibonacci retracement dari swing high/low candle 1 jam disertakan
+ * sebagai konteks tambahan, bukan basis TP.
+ *
+ * PENTING: fungsi ini HANYA relevan untuk sinyal BUY (area masuk
+ * beli). Untuk sinyal SELL di konteks spot, artinya "pertimbangkan
+ * exit posisi yang sudah dipegang" - bukan buka posisi short baru,
+ * jadi tidak ada level entry/TP bertingkat yang sama untuk SELL.
+ */
+export async function calculateSpotLevels(
+  pairSymbol: string,
+  currentPrice: number
+): Promise<SpotPositionLevels> {
+  // Ambil candle 1 jam untuk basis swing high/low Fibonacci -
+  // timeframe ini paling stabil, tidak terlalu bising seperti
+  // candle 1-5 menit tapi masih relevan untuk gaya entry-pagi-
+  // exit-sore (bukan candle harian yang terlalu lambat).
+  const hourlyCandles = await getIntradayCandles(pairSymbol, "60", 40);
+
+  const fibonacci = calculateFibonacciLevels(hourlyCandles);
+
+  const entry = currentPrice;
+  const stopLoss = entry * 0.99; // -1%
+  const takeProfit1 = entry * 1.1; // +10%
+  const takeProfit2 = entry * 1.2; // +20%
+  const takeProfit3 = entry * 1.3; // +30%
+
+  return {
+    entry,
+    stopLoss,
+    takeProfit1,
+    takeProfit2,
+    takeProfit3,
+    fibonacci,
   };
 }
