@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCoinPrice } from "@/lib/indodax";
 import { buildCoinPriceMessage } from "@/lib/format";
 import { sendTelegramMessage } from "@/lib/telegram";
-import { analyzeMultiTimeframe, MultiTimeframeSignal } from "@/lib/indodax";
+import { analyzeMultiTimeframe, MultiTimeframeSignal, calculateSpotLevels, SpotPositionLevels } from "@/lib/indodax";
 
 // Bentuk minimal dari update yang dikirim Telegram ke webhook kita.
 // Telegram sebenarnya kirim lebih banyak field, tapi kita cuma butuh ini.
@@ -20,7 +20,7 @@ function formatRupiah(n: number): string {
   return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
 }
 
-function buildMultiTimeframeMessage(result: MultiTimeframeSignal): string {
+async function buildMultiTimeframeMessage(result: MultiTimeframeSignal): Promise<string> {
   const lines: string[] = [`\ud83d\udcca *ANALISA MULTI-TIMEFRAME - ${result.symbol}*\n`];
 
   lines.push(`Harga saat ini: Rp ${formatRupiah(result.currentPrice)}\n`);
@@ -48,29 +48,42 @@ function buildMultiTimeframeMessage(result: MultiTimeframeSignal): string {
   lines.push(result.reason);
   lines.push("");
 
-  // Level entry/exit/SL hanya ditampilkan kalau sinyal valid
-  // (BUY atau SELL) - kalau TUNGGU, menampilkan angka entry
-  // justru menyesatkan karena belum ada dasar konfirmasi kuat.
+  // PENTING - logic SPOT: BUY = area masuk beli yang baik.
+  // SELL BUKAN ajakan buka posisi short baru (itu cuma bisa di
+  // futures/margin) - di SPOT, SELL berarti "kalau kamu SUDAH
+  // PEGANG coin ini, pertimbangkan exit sekarang". TUNGGU tidak
+  // dapat level apapun karena belum ada dasar konfirmasi kuat.
   if (result.signal === "BUY") {
-    const entry = result.currentPrice;
-    const sl = entry * 0.99; // SL sekitar 1% di bawah entry
-    const tp = entry * 1.05; // TP sekitar 5% di atas entry (tengah dari rentang 4-6%)
+    const levels: SpotPositionLevels = await calculateSpotLevels(
+      result.symbol,
+      result.currentPrice
+    );
+
     lines.push(
-      "*Referensi posisi (bukan jaminan, selalu pakai manajemen risiko sendiri):*",
-      `Entry (beli): sekitar Rp ${formatRupiah(entry)}`,
-      `Stop Loss: sekitar Rp ${formatRupiah(sl)} (-1%)`,
-      `Take Profit: sekitar Rp ${formatRupiah(tp)} (+5%)`,
+      "*Referensi posisi BELI (bukan jaminan, selalu pakai manajemen risiko sendiri):*",
+      `Entry: sekitar Rp ${formatRupiah(levels.entry)}`,
+      `Stop Loss: sekitar Rp ${formatRupiah(levels.stopLoss)} (-1%)`,
+      `TP1: sekitar Rp ${formatRupiah(levels.takeProfit1)} (+10%)`,
+      `TP2: sekitar Rp ${formatRupiah(levels.takeProfit2)} (+20%)`,
+      `TP3: sekitar Rp ${formatRupiah(levels.takeProfit3)} (+30%)`,
+      ""
+    );
+
+    // Fibonacci ditampilkan sebagai konteks pendukung - kalau TP1-3
+    // kebetulan dekat dengan salah satu level ini, itu konfirmasi
+    // tambahan, bukan basis utama penentuan TP.
+    lines.push(
+      "*Konteks Fibonacci (swing 1 jam terakhir):*",
+      `Swing High: Rp ${formatRupiah(levels.fibonacci.swingHigh)}`,
+      `Fib 61.8%: Rp ${formatRupiah(levels.fibonacci.level618)}`,
+      `Fib 50%: Rp ${formatRupiah(levels.fibonacci.level500)}`,
+      `Fib 38.2%: Rp ${formatRupiah(levels.fibonacci.level382)}`,
+      `Swing Low: Rp ${formatRupiah(levels.fibonacci.swingLow)}`,
       ""
     );
   } else if (result.signal === "SELL") {
-    const entry = result.currentPrice;
-    const sl = entry * 1.01; // SL sekitar 1% di atas entry untuk posisi sell
-    const tp = entry * 0.95; // TP sekitar 5% di bawah entry
     lines.push(
-      "*Referensi posisi (bukan jaminan, selalu pakai manajemen risiko sendiri):*",
-      `Entry (jual): sekitar Rp ${formatRupiah(entry)}`,
-      `Stop Loss: sekitar Rp ${formatRupiah(sl)} (+1%)`,
-      `Take Profit: sekitar Rp ${formatRupiah(tp)} (-5%)`,
+      "\u26a0\ufe0f *Ini SPOT, bukan futures* - sinyal SELL berarti: kalau kamu SUDAH PEGANG coin ini, pertimbangkan exit/jual sekarang. Ini BUKAN ajakan buka posisi jual baru untuk yang belum punya coinnya.",
       ""
     );
   }
@@ -161,10 +174,8 @@ export async function POST(request: Request) {
 
     try {
       const result = await analyzeMultiTimeframe(pairSymbol);
-      await sendTelegramMessage(
-        buildMultiTimeframeMessage(result),
-        String(chatId)
-      );
+      const message = await buildMultiTimeframeMessage(result);
+      await sendTelegramMessage(message, String(chatId));
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown error";
