@@ -23,7 +23,7 @@ interface IndodaxSummariesResponse {
   prices_24h?: Record<string, string>;
 }
 
-// Bentuk yang lebih enak dipakai di kode kita sendiri â€”
+// Bentuk yang lebih enak dipakai di kode kita sendiri -
 // pair_id sudah nempel di objeknya, angka sudah di-convert.
 export interface TopCoin {
   pairId: string; // contoh: "btc_idr"
@@ -46,7 +46,7 @@ export interface TopCoin {
 export async function getTopVolumeCoins(limit = 5): Promise<TopCoin[]> {
   const res = await fetch(INDODAX_SUMMARIES_URL, {
     // Next.js: jangan cache di level fetch, karena kita udah atur
-    // frekuen|ési update lewat cron job di level yang lebih atas.
+    // frekuen|nsi update lewat cron job di level yang lebih atas.
     cache: "no-store",
   });
 
