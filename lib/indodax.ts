@@ -629,7 +629,8 @@ function calculateFibonacciLevels(candles: Candle[]): FibonacciLevels {
 
 export interface SpotPositionLevels {
   entry: number;
-  stopLoss: number;
+  stopLossTight: number; // -3% dari entry, untuk yang mau risiko lebih kecil
+  stopLossWide: number; // -5% dari entry, kasih ruang gerak lebih lebar
   takeProfit1: number; // +10% dari entry
   takeProfit2: number; // +20% dari entry
   takeProfit3: number; // +30% dari entry
@@ -660,14 +661,20 @@ export async function calculateSpotLevels(
   const fibonacci = calculateFibonacciLevels(hourlyCandles);
 
   const entry = currentPrice;
-  const stopLoss = entry * 0.99; // -1%
+  // Dua pilihan Stop Loss, biar user pilih sesuai toleransi risiko:
+  // -3% (lebih ketat, cepat keluar kalau salah) atau -5% (lebih
+  // longgar, kasih ruang harga "bernapas" sebelum benar-benar
+  // dianggap gagal, cocok untuk coin yang volatil).
+  const stopLossTight = entry * 0.97; // -3%
+  const stopLossWide = entry * 0.95; // -5%
   const takeProfit1 = entry * 1.1; // +10%
   const takeProfit2 = entry * 1.2; // +20%
   const takeProfit3 = entry * 1.3; // +30%
 
   return {
     entry,
-    stopLoss,
+    stopLossTight,
+    stopLossWide,
     takeProfit1,
     takeProfit2,
     takeProfit3,
