@@ -681,3 +681,108 @@ export async function calculateSpotLevels(
     fibonacci,
   };
 }
+
+
+// ============================================================
+// TAMBAHAN UNTUK lib/indodax.ts
+// Scanner cepat semua coin - deteksi momentum bullish yang
+// SUDAH MULAI terjadi (bukan prediksi masa depan)
+// Copy-paste ke BAGIAN PALING BAWAH file yang sudah ada.
+// ============================================================
+
+export interface ScanResult {
+  symbol: string;
+  price: number;
+  rsi: number;
+  volumeIdr: number;
+}
+
+// Minimal volume 24 jam supaya coin ikut di-scan - di bawah ini
+// data candle-nya sering tidak reliable (jarang ada transaksi).
+const SCAN_MIN_VOLUME_IDR = 500_000_000; // Rp 500 juta
+
+// Batas jumlah coin yang benar-benar di-scan per pemanggilan,
+// supaya tidak kena rate limit Indodax (180 request/menit) atau
+// timeout function serverless Vercel.
+const SCAN_MAX_COINS = 50;
+
+/**
+ * Scan cepat semua coin di Indodax yang volumenya cukup besar,
+ * cek EMA9/EMA50 + RSI14 di timeframe 1 JAM SAJA (bukan 5
+ * timeframe seperti analyzeMultiTimeframe - itu untuk detail per
+ * coin, ini untuk radar cepat semua coin sekaligus).
+ *
+ * PENTING: ini mendeteksi momentum yang SUDAH MULAI terjadi
+ * (harga sudah bergerak, indikator sudah bereaksi), BUKAN
+ * memprediksi pergerakan yang belum terjadi. Kalau ada coin baru
+ * mulai pump 5-10 menit lalu, scan ini bisa menangkapnya lebih
+ * cepat daripada cek manual satu-satu - tapi tidak bisa tahu
+ * SEBELUM pergerakan itu dimulai.
+ *
+ * Mengembalikan coin yang bullish (EMA9>EMA50 DAN RSI>=50),
+ * diurutkan dari RSI tertinggi ke terendah.
+ */
+export async function scanBullishCoins(): Promise<ScanResult[]> {
+  // Ambil semua coin, urutkan volume, filter yang di bawah ambang
+  // batas, lalu potong ke maksimal SCAN_MAX_COINS.
+  const topCoins = await getTopVolumeCoins(200); // ambil banyak dulu
+  const eligibleCoins = topCoins
+    .filter((c) => c.volumeIdr >= SCAN_MIN_VOLUME_IDR)
+    .slice(0, SCAN_MAX_COINS);
+
+  // Cek tiap coin secara paralel - dengan Promise.allSettled supaya
+  // satu coin gagal (misal data candle kurang) tidak menggagalkan
+  // seluruh scan, cukup coin itu saja yang dilewati.
+  const results = await Promise.allSettled(
+    eligibleCoins.map(async (coin) => {
+      const pairSymbol = `${coin.symbol}IDR`;
+      const candles = await getIntradayCandles(pairSymbol, "60", 60);
+
+      if (candles.length < 20) {
+        // Data terlalu sedikit untuk dihitung dengan wajar, skip.
+        throw new Error(`Data candle kurang untuk ${pairSymbol}`);
+      }
+
+      const closedCandles = candles.slice(0, -1);
+      const candlesToUse =
+        closedCandles.length >= 50 ? closedCandles : candles;
+      const closes = candlesToUse.map((c) => c.close);
+
+      const ema9Arr = calculateEMA(closes, 9);
+      const ema50Arr = calculateEMA(closes, 50);
+      const rsiArr = calculateRSI(closes, 14);
+
+      const last = closes.length - 1;
+      const ema9 = ema9Arr[last];
+      const ema50 = ema50Arr[last];
+      const rsi = rsiArr[last];
+
+      const isBullish = ema9 > ema50 && rsi >= 50;
+
+      return {
+        symbol: coin.symbol,
+        price: candles[candles.length - 1].close,
+        rsi,
+        volumeIdr: coin.volumeIdr,
+        isBullish,
+      };
+    })
+  );
+
+  const bullishCoins: ScanResult[] = [];
+  for (const r of results) {
+    if (r.status === "fulfilled" && r.value.isBullish) {
+      bullishCoins.push({
+        symbol: r.value.symbol,
+        price: r.value.price,
+        rsi: r.value.rsi,
+        volumeIdr: r.value.volumeIdr,
+      });
+    }
+  }
+
+  // Urutkan RSI tertinggi dulu - momentum paling kuat di atas.
+  bullishCoins.sort((a, b) => b.rsi - a.rsi);
+
+  return bullishCoins;
+}
