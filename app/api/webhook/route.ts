@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCoinPrice } from "@/lib/indodax";
 import { buildCoinPriceMessage } from "@/lib/format";
 import { sendTelegramMessage } from "@/lib/telegram";
-import { analyzeMultiTimeframe, MultiTimeframeSignal, calculateSpotLevels, SpotPositionLevels } from "@/lib/indodax";
+import { analyzeMultiTimeframe, MultiTimeframeSignal, calculateSpotLevels, SpotPositionLevels, scanBullishCoins, ScanResult } from "@/lib/indodax";
 
 // Bentuk minimal dari update yang dikirim Telegram ke webhook kita.
 // Telegram sebenarnya kirim lebih banyak field, tapi kita cuma butuh ini.
@@ -18,6 +18,30 @@ interface TelegramUpdate {
 
 function formatRupiah(n: number): string {
   return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
+}
+
+function buildScanMessage(results: ScanResult[]): string {
+  if (results.length === 0) {
+    return [
+      "\ud83d\udd0d *SCAN CEPAT - Coin Bullish (1H)*\n",
+      "Tidak ada coin yang memenuhi kriteria bullish saat ini (EMA9>EMA50 dan RSI>=50).",
+      "",
+      "_Minimal volume: Rp 500 Jt. Coba lagi beberapa saat lagi._",
+    ].join("\n");
+  }
+
+  const lines: string[] = ["\ud83d\udd0d *SCAN CEPAT - Coin Bullish (1H)*\n"];
+
+  const top10 = results.slice(0, 10);
+  top10.forEach((r, i) => {
+    lines.push(`${i + 1}. \ud83d\udfe2 ${r.symbol}IDR - RSI ${r.rsi.toFixed(1)} - Rp ${formatRupiah(r.price)}`);
+  });
+
+  lines.push("");
+  lines.push(`_Ditemukan ${results.length} coin bullish dari maksimal 50 coin yang di-scan (volume >= Rp 500 Jt)._`);
+  lines.push("_Ini deteksi momentum yang SUDAH mulai bergerak, bukan prediksi masa depan. Untuk detail lengkap, ketik /analisa <coin>._");
+
+  return lines.join("\n");
 }
 
 async function buildMultiTimeframeMessage(result: MultiTimeframeSignal): Promise<string> {
@@ -129,6 +153,7 @@ const SWING_PAIRS = ["BTCIDR", "ETHIDR", "SOLIDR"];
  * - /harga <coin>   contoh: /harga btc, /harga sol
  * - /analisa <coin>  analisis multi-timeframe (1m,5m,15m,30m,1h)
  *                     untuk 1 coin, contoh: /analisa btc
+ * - /scan             scan cepat semua coin, cari yang bullish (1H)
  * - /help            panduan lengkap command dan cara verifikasi
  */
 export async function POST(request: Request) {
@@ -190,6 +215,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  // Command /scan: scan cepat semua coin, cari yang momentumnya
+  // sudah mulai bullish di timeframe 1 jam. Tidak butuh argumen.
+  if (/^\/scan(?:@\w+)?/i.test(text)) {
+    try {
+      const results = await scanBullishCoins();
+      await sendTelegramMessage(buildScanMessage(results), String(chatId));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown error";
+      console.error("Webhook /scan gagal:", message);
+      await sendTelegramMessage(
+        "Gagal menjalankan scan, coba lagi sebentar lagi.",
+        String(chatId)
+      ).catch(() => {});
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   // Command /help: panduan command dan cara verifikasi indikator
   if (/^\/help(?:@\w+)?/i.test(text)) {
     const helpMessage = [
@@ -199,6 +242,7 @@ export async function POST(request: Request) {
       "Contoh: `/harga btc`\n",
       "`/analisa <coin>` - analisis multi-timeframe lengkap",
       "Contoh: `/analisa sol`\n",
+      "`/scan` - scan cepat semua coin, cari yang momentumnya sudah mulai bullish (timeframe 1 jam)\n",
       "*Cara kerja /analisa:*",
       "Bot mengecek 5 timeframe sekaligus: 1 menit, 5 menit, 15 menit, 30 menit, dan 1 jam.",
       "Di tiap timeframe, dihitung 2 indikator:",
