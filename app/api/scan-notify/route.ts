@@ -1,3 +1,4 @@
+// Redeploy trigger: refresh CRON_SECRET env var
 import { NextResponse } from "next/server";
 import { scanBullishCoins } from "@/lib/indodax";
 import { sendTelegramMessage } from "@/lib/telegram";
