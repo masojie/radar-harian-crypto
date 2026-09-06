@@ -63,12 +63,15 @@ async function buildMultiTimeframeMessage(result: MultiTimeframeSignal): Promise
   lines.push("");
 
   lines.push(
-    `*Voting: EMA bullish ${result.emaBullishCount}/5, RSI bullish ${result.rsiBullishCount}/5*\n`
+    `*Voting tertimbang: EMA bullish ${result.emaWeightedScore}/8, RSI bullish ${result.rsiWeightedScore}/8*`
+  );
+  lines.push(
+    `_(1h dan 30m diberi bobot lebih besar dari timeframe kecil)_\n`
   );
 
   const signalEmoji =
     result.signal === "BUY" ? "\ud83d\udfe2" : result.signal === "SELL" ? "\ud83d\udd34" : "\u23f8\ufe0f";
-  lines.push(`${signalEmoji} *SINYAL: ${result.signal}*`);
+  lines.push(`${signalEmoji} *SINYAL: ${result.signal}*${result.confidence ? ` (Confidence: ${result.confidence})` : ""}`);
   lines.push(result.reason);
   lines.push("");
 
