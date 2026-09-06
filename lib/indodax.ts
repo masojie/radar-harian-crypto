@@ -403,12 +403,15 @@ export async function analyzeSwing(
 // "tf" yang dipahami endpoint Indodax (dalam satuan menit,
 // sesuai skala standar TradingView: 1,5,15,30,60,240,1D,...)
 const MTF_TIMEFRAMES = [
-  { label: "1m", tf: "1", minutes: 1 },
-  { label: "5m", tf: "5", minutes: 5 },
-  { label: "15m", tf: "15", minutes: 15 },
-  { label: "30m", tf: "30", minutes: 30 },
-  { label: "1h", tf: "60", minutes: 60 },
+  { label: "1m", tf: "1", minutes: 1, weight: 1 },
+  { label: "5m", tf: "5", minutes: 5, weight: 1 },
+  { label: "15m", tf: "15", minutes: 15, weight: 1 },
+  { label: "30m", tf: "30", minutes: 30, weight: 2 },
+  { label: "1h", tf: "60", minutes: 60, weight: 3 },
 ] as const;
+
+const MTF_TOTAL_WEIGHT = 8;
+const MTF_WEIGHTED_THRESHOLD = 6;
 
 /**
  * Ambil candle untuk timeframe intraday (bukan harian). Mirip
@@ -463,9 +466,10 @@ export async function getIntradayCandles(
 }
 
 export interface TimeframeVote {
-  label: string; // "1m", "5m", dst
-  emaBullish: boolean; // EMA9 > EMA50 di timeframe ini
-  rsiBullish: boolean; // RSI14 >= 50 di timeframe ini
+  label: string;
+  weight: number;
+  emaBullish: boolean;
+  rsiBullish: boolean;
   rsiValue: number;
   price: number;
 }
@@ -474,19 +478,14 @@ export interface MultiTimeframeSignal {
   symbol: string;
   currentPrice: number;
   votes: TimeframeVote[];
-  emaBullishCount: number; // dari 5, berapa yang EMA-nya bullish
-  rsiBullishCount: number; // dari 5, berapa yang RSI-nya bullish
+  emaBullishCount: number;
+  rsiBullishCount: number;
+  emaWeightedScore: number;
+  rsiWeightedScore: number;
   signal: "BUY" | "SELL" | "TUNGGU";
-  // Alasan singkat kenapa signal ini yang keluar, dipakai untuk
-  // ditampilkan ke user supaya keputusan bot bisa dipahami, bukan
-  // cuma diterima mentah-mentah.
+  confidence: "TINGGI" | "SEDANG" | null;
   reason: string;
 }
-
-// Ambang voting: dari 5 timeframe, minimal berapa yang harus
-// searah supaya dianggap sinyal valid. Angka ini yang diminta
-// user sendiri: minimal 3 dari 5 (mayoritas sederhana).
-const MIN_VOTES_FOR_SIGNAL = 3;
 
 /**
  * Jalankan analisis EMA9/EMA50 + RSI14 di 5 timeframe sekaligus
@@ -533,6 +532,7 @@ export async function analyzeMultiTimeframe(
 
       const vote: TimeframeVote = {
         label: tfConfig.label,
+        weight: tfConfig.weight,
         emaBullish: ema9 > ema50,
         rsiBullish: rsiValue >= 50,
         rsiValue,
@@ -548,24 +548,32 @@ export async function analyzeMultiTimeframe(
   const emaBearishCount = results.length - emaBullishCount;
   const rsiBearishCount = results.length - rsiBullishCount;
 
+  const emaWeightedScore = results.filter((v) => v.emaBullish).reduce((s, v) => s + v.weight, 0);
+  const rsiWeightedScore = results.filter((v) => v.rsiBullish).reduce((s, v) => s + v.weight, 0);
+  const emaBearishWeightedScore = MTF_TOTAL_WEIGHT - emaWeightedScore;
+  const rsiBearishWeightedScore = MTF_TOTAL_WEIGHT - rsiWeightedScore;
+
   let signal: MultiTimeframeSignal["signal"] = "TUNGGU";
+  let confidence: MultiTimeframeSignal["confidence"] = null;
   let reason = "";
 
-  const buyValid =
-    emaBullishCount >= MIN_VOTES_FOR_SIGNAL &&
-    rsiBullishCount >= MIN_VOTES_FOR_SIGNAL;
-  const sellValid =
-    emaBearishCount >= MIN_VOTES_FOR_SIGNAL &&
-    rsiBearishCount >= MIN_VOTES_FOR_SIGNAL;
+  const buyValid = emaWeightedScore >= MTF_WEIGHTED_THRESHOLD && rsiWeightedScore >= MTF_WEIGHTED_THRESHOLD;
+  const sellValid = emaBearishWeightedScore >= MTF_WEIGHTED_THRESHOLD && rsiBearishWeightedScore >= MTF_WEIGHTED_THRESHOLD;
+
+  const CONFIDENCE_HIGH_THRESHOLD = 7;
 
   if (buyValid) {
     signal = "BUY";
-    reason = `EMA bullish di ${emaBullishCount}/5 timeframe, RSI bullish di ${rsiBullishCount}/5 timeframe - kombinasi sudah mencapai ambang minimal (${MIN_VOTES_FOR_SIGNAL}/5).`;
+    const minScore = Math.min(emaWeightedScore, rsiWeightedScore);
+    confidence = minScore >= CONFIDENCE_HIGH_THRESHOLD ? "TINGGI" : "SEDANG";
+    reason = `Skor tertimbang EMA bullish ${emaWeightedScore}/${MTF_TOTAL_WEIGHT}, RSI bullish ${rsiWeightedScore}/${MTF_TOTAL_WEIGHT} - kombinasi sudah mencapai ambang minimal (${MTF_WEIGHTED_THRESHOLD}/${MTF_TOTAL_WEIGHT}). Timeframe 1h dan 30m diberi bobot lebih besar karena lebih mencerminkan tren sebenarnya.`;
   } else if (sellValid) {
     signal = "SELL";
-    reason = `EMA bearish di ${emaBearishCount}/5 timeframe, RSI bearish di ${rsiBearishCount}/5 timeframe - kombinasi sudah mencapai ambang minimal (${MIN_VOTES_FOR_SIGNAL}/5).`;
+    const minScore = Math.min(emaBearishWeightedScore, rsiBearishWeightedScore);
+    confidence = minScore >= CONFIDENCE_HIGH_THRESHOLD ? "TINGGI" : "SEDANG";
+    reason = `Skor tertimbang EMA bearish ${emaBearishWeightedScore}/${MTF_TOTAL_WEIGHT}, RSI bearish ${rsiBearishWeightedScore}/${MTF_TOTAL_WEIGHT} - kombinasi sudah mencapai ambang minimal (${MTF_WEIGHTED_THRESHOLD}/${MTF_TOTAL_WEIGHT}).`;
   } else {
-    reason = `Belum ada arah yang mencapai ${MIN_VOTES_FOR_SIGNAL}/5 di kedua indikator sekaligus (EMA: ${emaBullishCount} bullish vs ${emaBearishCount} bearish, RSI: ${rsiBullishCount} bullish vs ${rsiBearishCount} bearish). Tunggu konfirmasi lebih lanjut sebelum entry.`;
+    reason = `Belum ada arah yang mencapai skor tertimbang ${MTF_WEIGHTED_THRESHOLD}/${MTF_TOTAL_WEIGHT} di kedua indikator sekaligus (EMA: ${emaWeightedScore} bullish vs ${emaBearishWeightedScore} bearish, RSI: ${rsiWeightedScore} bullish vs ${rsiBearishWeightedScore} bearish). Tunggu konfirmasi lebih lanjut sebelum entry.`;
   }
 
   // Harga acuan: pakai candle 1 menit sebagai yang paling
@@ -578,7 +586,10 @@ export async function analyzeMultiTimeframe(
     votes: results,
     emaBullishCount,
     rsiBullishCount,
+    emaWeightedScore,
+    rsiWeightedScore,
     signal,
+    confidence,
     reason,
   };
 }
