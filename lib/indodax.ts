@@ -412,6 +412,7 @@ const MTF_TIMEFRAMES = [
 
 const MTF_TOTAL_WEIGHT = 8;
 const MTF_WEIGHTED_THRESHOLD = 6;
+const VOLUME_CONFIRMATION_THRESHOLD = 1.5;
 
 /**
  * Ambil candle untuk timeframe intraday (bukan harian). Mirip
@@ -472,6 +473,7 @@ export interface TimeframeVote {
   rsiBullish: boolean;
   rsiValue: number;
   price: number;
+  volumeRatio: number;
 }
 
 export interface MultiTimeframeSignal {
@@ -482,6 +484,8 @@ export interface MultiTimeframeSignal {
   rsiBullishCount: number;
   emaWeightedScore: number;
   rsiWeightedScore: number;
+  volumeRatio1h: number;
+  volumeConfirmed: boolean;
   signal: "BUY" | "SELL" | "TUNGGU";
   confidence: "TINGGI" | "SEDANG" | null;
   reason: string;
@@ -530,6 +534,13 @@ export async function analyzeMultiTimeframe(
       const ema50 = ema50Arr[last];
       const rsiValue = rsiArr[last];
 
+      const volumeLookback = candlesToUse.slice(-11, -1);
+      const avgVolume = volumeLookback.length > 0
+        ? volumeLookback.reduce((s, c) => s + c.volume, 0) / volumeLookback.length
+        : 0;
+      const lastVolume = candlesToUse[candlesToUse.length - 1].volume;
+      const volumeRatio = avgVolume > 0 ? lastVolume / avgVolume : 0;
+
       const vote: TimeframeVote = {
         label: tfConfig.label,
         weight: tfConfig.weight,
@@ -537,6 +548,7 @@ export async function analyzeMultiTimeframe(
         rsiBullish: rsiValue >= 50,
         rsiValue,
         price: candles[candles.length - 1].close,
+        volumeRatio,
       };
 
       return vote;
@@ -557,8 +569,15 @@ export async function analyzeMultiTimeframe(
   let confidence: MultiTimeframeSignal["confidence"] = null;
   let reason = "";
 
-  const buyValid = emaWeightedScore >= MTF_WEIGHTED_THRESHOLD && rsiWeightedScore >= MTF_WEIGHTED_THRESHOLD;
-  const sellValid = emaBearishWeightedScore >= MTF_WEIGHTED_THRESHOLD && rsiBearishWeightedScore >= MTF_WEIGHTED_THRESHOLD;
+  const vote1h = results.find((v) => v.label === "1h");
+  const volumeRatio1h = vote1h?.volumeRatio ?? 0;
+  const volumeConfirmed = volumeRatio1h >= VOLUME_CONFIRMATION_THRESHOLD;
+
+  const emaSignalValid = emaWeightedScore >= MTF_WEIGHTED_THRESHOLD && rsiWeightedScore >= MTF_WEIGHTED_THRESHOLD;
+  const emaSellSignalValid = emaBearishWeightedScore >= MTF_WEIGHTED_THRESHOLD && rsiBearishWeightedScore >= MTF_WEIGHTED_THRESHOLD;
+
+  const buyValid = emaSignalValid && volumeConfirmed;
+  const sellValid = emaSellSignalValid && volumeConfirmed;
 
   const CONFIDENCE_HIGH_THRESHOLD = 7;
 
@@ -566,12 +585,16 @@ export async function analyzeMultiTimeframe(
     signal = "BUY";
     const minScore = Math.min(emaWeightedScore, rsiWeightedScore);
     confidence = minScore >= CONFIDENCE_HIGH_THRESHOLD ? "TINGGI" : "SEDANG";
-    reason = `Skor tertimbang EMA bullish ${emaWeightedScore}/${MTF_TOTAL_WEIGHT}, RSI bullish ${rsiWeightedScore}/${MTF_TOTAL_WEIGHT} - kombinasi sudah mencapai ambang minimal (${MTF_WEIGHTED_THRESHOLD}/${MTF_TOTAL_WEIGHT}). Timeframe 1h dan 30m diberi bobot lebih besar karena lebih mencerminkan tren sebenarnya.`;
+    reason = `Skor tertimbang EMA bullish ${emaWeightedScore}/${MTF_TOTAL_WEIGHT}, RSI bullish ${rsiWeightedScore}/${MTF_TOTAL_WEIGHT}, volume 1h ${volumeRatio1h.toFixed(1)}x rata-rata (syarat minimal ${VOLUME_CONFIRMATION_THRESHOLD}x) - semua syarat terpenuhi.`;
   } else if (sellValid) {
     signal = "SELL";
     const minScore = Math.min(emaBearishWeightedScore, rsiBearishWeightedScore);
     confidence = minScore >= CONFIDENCE_HIGH_THRESHOLD ? "TINGGI" : "SEDANG";
-    reason = `Skor tertimbang EMA bearish ${emaBearishWeightedScore}/${MTF_TOTAL_WEIGHT}, RSI bearish ${rsiBearishWeightedScore}/${MTF_TOTAL_WEIGHT} - kombinasi sudah mencapai ambang minimal (${MTF_WEIGHTED_THRESHOLD}/${MTF_TOTAL_WEIGHT}).`;
+    reason = `Skor tertimbang EMA bearish ${emaBearishWeightedScore}/${MTF_TOTAL_WEIGHT}, RSI bearish ${rsiBearishWeightedScore}/${MTF_TOTAL_WEIGHT}, volume 1h ${volumeRatio1h.toFixed(1)}x rata-rata - semua syarat terpenuhi.`;
+  } else if (emaSignalValid && !volumeConfirmed) {
+    reason = `EMA dan RSI sudah bullish (${emaWeightedScore}/${MTF_TOTAL_WEIGHT} dan ${rsiWeightedScore}/${MTF_TOTAL_WEIGHT}), TAPI volume 1h cuma ${volumeRatio1h.toFixed(1)}x rata-rata (butuh minimal ${VOLUME_CONFIRMATION_THRESHOLD}x). Pergerakan harga belum didukung partisipasi transaksi yang cukup - rawan fakeout. Tunggu volume menguat.`;
+  } else if (emaSellSignalValid && !volumeConfirmed) {
+    reason = `EMA dan RSI sudah bearish (${emaBearishWeightedScore}/${MTF_TOTAL_WEIGHT} dan ${rsiBearishWeightedScore}/${MTF_TOTAL_WEIGHT}), TAPI volume 1h cuma ${volumeRatio1h.toFixed(1)}x rata-rata (butuh minimal ${VOLUME_CONFIRMATION_THRESHOLD}x). Tunggu konfirmasi volume sebelum entry.`;
   } else {
     reason = `Belum ada arah yang mencapai skor tertimbang ${MTF_WEIGHTED_THRESHOLD}/${MTF_TOTAL_WEIGHT} di kedua indikator sekaligus (EMA: ${emaWeightedScore} bullish vs ${emaBearishWeightedScore} bearish, RSI: ${rsiWeightedScore} bullish vs ${rsiBearishWeightedScore} bearish). Tunggu konfirmasi lebih lanjut sebelum entry.`;
   }
@@ -588,6 +611,8 @@ export async function analyzeMultiTimeframe(
     rsiBullishCount,
     emaWeightedScore,
     rsiWeightedScore,
+    volumeRatio1h,
+    volumeConfirmed,
     signal,
     confidence,
     reason,
