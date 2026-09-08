@@ -66,7 +66,11 @@ async function buildMultiTimeframeMessage(result: MultiTimeframeSignal): Promise
     `*Voting tertimbang: EMA bullish ${result.emaWeightedScore}/8, RSI bullish ${result.rsiWeightedScore}/8*`
   );
   lines.push(
-    `_(1h dan 30m diberi bobot lebih besar dari timeframe kecil)_\n`
+    `_(1h dan 30m diberi bobot lebih besar dari timeframe kecil)_`
+  );
+  const volumeIcon = result.volumeConfirmed ? "\u2705" : "\u26a0\ufe0f";
+  lines.push(
+    `*Volume 1h: ${result.volumeRatio1h.toFixed(1)}x rata-rata* ${volumeIcon} (syarat minimal 1.5x)\n`
   );
 
   const signalEmoji =
