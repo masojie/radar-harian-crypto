@@ -822,3 +822,140 @@ export async function scanBullishCoins(): Promise<ScanResult[]> {
 
   return bullishCoins;
 }
+
+
+// ============================================================
+// TAMBAHAN UNTUK lib/indodax.ts
+// Deteksi support/resistance otomatis dari histori candle mingguan
+// Diterjemahkan dari metode manual "garis horizontal" Masojie
+// Parameter disepakati: minimal 3x sentuhan, toleransi 1% per level
+// ============================================================
+
+export interface PriceLevel {
+  price: number;
+  touches: number;
+  rawPrices: number[];
+  type?: "support" | "resistance";
+}
+
+const SR_MIN_TOUCHES = 3;
+const SR_TOLERANCE_PERCENT = 0.01;
+
+function collectTouchPoints(candles: Candle[]): number[] {
+  const points: number[] = [];
+  for (const c of candles) {
+    points.push(c.high, c.low);
+  }
+  return points.sort((a, b) => a - b);
+}
+
+function clusterTouchPoints(sortedPoints: number[]): number[][] {
+  if (sortedPoints.length === 0) return [];
+  const clusters: number[][] = [];
+  let currentCluster: number[] = [sortedPoints[0]];
+
+  for (let i = 1; i < sortedPoints.length; i++) {
+    const point = sortedPoints[i];
+    const clusterAvg = currentCluster.reduce((s, p) => s + p, 0) / currentCluster.length;
+    const distanceFromAvg = Math.abs(point - clusterAvg) / clusterAvg;
+    const clusterFirstPoint = currentCluster[0];
+    const spreadFromFirst = (point - clusterFirstPoint) / clusterFirstPoint;
+
+    if (distanceFromAvg <= SR_TOLERANCE_PERCENT && spreadFromFirst <= SR_TOLERANCE_PERCENT) {
+      currentCluster.push(point);
+    } else {
+      clusters.push(currentCluster);
+      currentCluster = [point];
+    }
+  }
+  clusters.push(currentCluster);
+  return clusters;
+}
+
+function clustersToValidLevels(clusters: number[][]): PriceLevel[] {
+  return clusters
+    .map((cluster) => ({
+      price: cluster.reduce((s, p) => s + p, 0) / cluster.length,
+      touches: cluster.length,
+      rawPrices: cluster,
+    }))
+    .filter((level) => level.touches >= SR_MIN_TOUCHES)
+    .sort((a, b) => a.price - b.price);
+}
+
+function classifyLevels(levels: PriceLevel[], currentPrice: number): PriceLevel[] {
+  return levels.map((level) => ({
+    ...level,
+    type: (level.price < currentPrice ? "support" : "resistance") as "support" | "resistance",
+  }));
+}
+
+/**
+ * Deteksi level support/resistance dari candle mingguan (1W),
+ * histori penuh dari data paling awal yang tersedia sampai
+ * sekarang. Diterjemahkan dari metode manual Masojie: tarik garis
+ * horizontal di area harga yang sering disentuh berulang (minimal
+ * 3x), dengan toleransi 1% dianggap "level yang sama".
+ */
+export function detectSupportResistanceLevels(
+  candles: Candle[],
+  currentPrice: number
+): PriceLevel[] {
+  if (candles.length === 0) return [];
+  const touchPoints = collectTouchPoints(candles);
+  const clusters = clusterTouchPoints(touchPoints);
+  const validLevels = clustersToValidLevels(clusters);
+  return classifyLevels(validLevels, currentPrice);
+}
+
+/**
+ * Ambil candle mingguan (1W) sejak awal data yang tersedia sampai
+ * sekarang, untuk basis deteksi support/resistance jangka panjang.
+ * Berbeda dari getIntradayCandles yang untuk timeframe pendek -
+ * ini pakai rentang waktu jauh lebih panjang (beberapa tahun ke
+ * belakang) supaya histori yang ditarik cukup untuk menangkap
+ * pola berulang.
+ */
+export async function getWeeklyCandlesFull(pairSymbol: string): Promise<Candle[]> {
+  const to = Math.floor(Date.now() / 1000);
+  // Tarik sampai 5 tahun ke belakang - cukup panjang untuk histori
+  // penuh kebanyakan coin, dan Indodax otomatis akan mengembalikan
+  // data yang tersedia saja kalau coin itu lebih baru dari itu.
+  const from = to - 5 * 365 * 24 * 60 * 60;
+
+  const url = `https://indodax.com/tradingview/history_v2?from=${from}&to=${to}&tf=1W&symbol=${pairSymbol.toUpperCase()}`;
+  const res = await fetch(url, { cache: "no-store" });
+
+  if (!res.ok) {
+    throw new Error(`Indodax weekly history API gagal merespons: ${res.status} ${res.statusText}`);
+  }
+
+  const raw: Array<{ Time: number; Open: number; High: number; Low: number; Close: number; Volume: string }> = await res.json();
+
+  return raw.map((c) => ({
+    time: c.Time,
+    open: c.Open,
+    high: c.High,
+    low: c.Low,
+    close: c.Close,
+    volume: Number(c.Volume),
+  }));
+}
+
+/**
+ * Cari 2 level resistance terdekat DI ATAS harga sekarang, dipakai
+ * sebagai acuan TP1 (terdekat) dan TP2 (berikutnya) - lebih
+ * berbasis histori nyata dibanding persentase tetap, karena ini
+ * menandai area yang SUDAH TERBUKTI jadi titik pasar berbalik di
+ * masa lalu.
+ */
+export function findNearestResistanceLevels(
+  levels: PriceLevel[],
+  currentPrice: number,
+  count = 2
+): PriceLevel[] {
+  return levels
+    .filter((l) => l.type === "resistance" && l.price > currentPrice)
+    .sort((a, b) => a.price - b.price)
+    .slice(0, count);
+}
