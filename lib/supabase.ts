@@ -62,3 +62,41 @@ export async function saveScanResults(rows: RadarScanRow[]): Promise<void> {
     throw new Error(`Gagal simpan hasil scan ke Supabase: ${error.message}`);
   }
 }
+
+/**
+ * Bentuk satu baris yang disimpan ke tabel bullish_scans.
+ * Beda dari RadarScanRow: tidak ada buy/sell/volume (endpoint
+ * scan-notify tidak menghitung itu), tapi ada rsi dan TP1/TP2
+ * berbasis resistance historis untuk 3 coin teratas. Field TP
+ * nullable karena cuma diisi untuk 3 coin teratas per scan.
+ */
+export interface BullishScanRow {
+  symbol: string;
+  rsi: number;
+  price: number;
+  rank_in_scan: number;
+  tp1_price: number | null;
+  tp1_touches: number | null;
+  tp2_price: number | null;
+  tp2_touches: number | null;
+}
+
+/**
+ * Simpan hasil satu kali scan bullish ke tabel bullish_scans.
+ * Dipanggil dari /api/scan-notify, yang jalan tiap 15 menit lewat
+ * scheduler eksternal (cron-job.org). Sama seperti saveScanResults,
+ * kegagalan di sini TIDAK BOLEH menggagalkan pengiriman notifikasi
+ * Telegram - errornya dilempar ke pemanggil supaya bisa ditangkap
+ * dan di-log secara terpisah tanpa membatalkan seluruh request.
+ */
+export async function saveBullishScanResults(
+  rows: BullishScanRow[]
+): Promise<void> {
+  const { error } = await supabaseAdmin.from("bullish_scans").insert(rows);
+
+  if (error) {
+    throw new Error(
+      `Gagal simpan hasil scan bullish ke Supabase: ${error.message}`
+    );
+  }
+}
