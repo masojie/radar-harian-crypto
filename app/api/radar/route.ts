@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getTopVolumeCoins } from "@/lib/indodax";
 import { buildRadarMessage } from "@/lib/format";
 import { sendTelegramMessage } from "@/lib/telegram";
+import { saveScanResults, type RadarScanRow } from "@/lib/supabase";
 
 // Vercel Cron mengirim GET request ke endpoint ini sesuai jadwal
 // di vercel.json. Route ini juga bisa dites manual lewat browser
@@ -39,10 +40,35 @@ export async function GET(request: Request) {
     const message = buildRadarMessage(topCoins);
     await sendTelegramMessage(message);
 
+    // Simpan hasil scan ke Supabase SETELAH Telegram terkirim.
+    // Sengaja dibungkus try-catch terpisah: kalau database bermasalah
+    // (limit, koneksi putus, dll), notifikasi Telegram harian yang
+    // jadi tujuan utama endpoint ini tetap harus sukses. Kegagalan
+    // simpan hanya dicatat di log, tidak membatalkan response sukses.
+    let savedToDatabase = true;
+    try {
+      const rows: RadarScanRow[] = topCoins.map((coin, index) => ({
+        pair_id: coin.pairId,
+        symbol: coin.symbol,
+        last_price: coin.lastPrice,
+        buy_price: coin.buyPrice,
+        sell_price: coin.sellPrice,
+        volume_idr: coin.volumeIdr,
+        rank_in_scan: index + 1,
+      }));
+      await saveScanResults(rows);
+    } catch (dbError) {
+      savedToDatabase = false;
+      const dbMessage =
+        dbError instanceof Error ? dbError.message : "Unknown database error";
+      console.error("Radar: gagal simpan ke Supabase (Telegram tetap terkirim):", dbMessage);
+    }
+
     return NextResponse.json({
       success: true,
       sentAt: new Date().toISOString(),
       coins: topCoins,
+      savedToDatabase,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
