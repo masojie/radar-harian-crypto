@@ -735,12 +735,12 @@ export interface ScanResult {
 
 // Minimal volume 24 jam supaya coin ikut di-scan - di bawah ini
 // data candle-nya sering tidak reliable (jarang ada transaksi).
-const SCAN_MIN_VOLUME_IDR = 500_000_000; // Rp 500 juta
+const SCAN_MIN_VOLUME_IDR = 300_000_000; // Rp 300 juta
 
 // Batas jumlah coin yang benar-benar di-scan per pemanggilan,
 // supaya tidak kena rate limit Indodax (180 request/menit) atau
 // timeout function serverless Vercel.
-const SCAN_MAX_COINS = 50;
+const SCAN_MAX_COINS = 120;
 
 /**
  * Scan cepat semua coin di Indodax yang volumenya cukup besar,
@@ -751,19 +751,26 @@ const SCAN_MAX_COINS = 50;
  * PENTING: ini mendeteksi momentum yang SUDAH MULAI terjadi
  * (harga sudah bergerak, indikator sudah bereaksi), BUKAN
  * memprediksi pergerakan yang belum terjadi. Kalau ada coin baru
-mulai pump 5-10 menit lalu, scan ini bisa menangkapnya lebih
+ * mulai pump 5-10 menit lalu, scan ini bisa menangkapnya lebih
  * cepat daripada cek manual satu-satu - tapi tidak bisa tahu
  * SEBELUM pergerakan itu dimulai.
  *
- * Mengembalikan coin yang RSI14-nya di bawah 30 (oversold, kandidat
+ * Mengembalikan coin yang RSI14-nya di bawah 35 (oversold, kandidat
  * mau trending/reversal naik), diurutkan dari RSI terendah ke
  * tertinggi (paling oversold di atas).
  *
  * CATATAN: sebelumnya filter ini pakai kombinasi EMA9>EMA50 DAN
  * RSI>=50 (momentum yang sudah jalan). Filter EMA sudah dihapus,
- * kriteria sekarang murni RSI di bawah 30.
+ * kriteria sekarang murni RSI di bawah threshold ini.
+ *
+ * CATATAN 2: threshold awalnya 30, dinaikkan ke 35 karena screening
+ * volume Rp500jt + max 50 coin ternyata terlalu sedikit coin lolos
+ * (sering cuma 1 coin per scan). Volume minimum diturunkan ke Rp300jt
+ * dan SCAN_MAX_COINS dinaikkan ke 120 di waktu yang sama, supaya coin
+ * volume kecil-menengah benar-benar ikut dihitung RSI-nya, bukan
+ * kepotong duluan di tahap slice sebelum sempat dicek.
  */
-const RSI_OVERSOLD_THRESHOLD = 30;
+const RSI_OVERSOLD_THRESHOLD = 35;
 
 export async function scanBullishCoins(): Promise<ScanResult[]> {
   // Ambil semua coin, urutkan volume, filter yang di bawah ambang
