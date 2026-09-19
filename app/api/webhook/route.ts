@@ -95,9 +95,9 @@ async function buildMultiTimeframeMessage(result: MultiTimeframeSignal): Promise
       `Entry: sekitar Rp ${formatRupiah(levels.entry)}`,
       `Stop Loss Ketat: sekitar Rp ${formatRupiah(levels.stopLossTight)} (-3%)`,
       `Stop Loss Longgar: sekitar Rp ${formatRupiah(levels.stopLossWide)} (-5%)`,
-      `TP1: sekitar Rp ${formatRupiah(levels.takeProfit1)} (+10%)`,
-      `TP2: sekitar Rp ${formatRupiah(levels.takeProfit2)} (+20%)`,
-      `TP3: sekitar Rp ${formatRupiah(levels.takeProfit3)} (+30%)`,
+      `TP1: sekitar Rp ${formatRupiah(levels.takeProfit1)} (+5%)`,
+      `TP2: sekitar Rp ${formatRupiah(levels.takeProfit2)} (+10%)`,
+      `TP3: sekitar Rp ${formatRupiah(levels.takeProfit3)} (+15%)`,
       ""
     );
 
