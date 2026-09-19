@@ -667,9 +667,9 @@ export interface SpotPositionLevels {
   entry: number;
   stopLossTight: number; // -3% dari entry, untuk yang mau risiko lebih kecil
   stopLossWide: number; // -5% dari entry, kasih ruang gerak lebih lebar
-  takeProfit1: number; // +10% dari entry
-  takeProfit2: number; // +20% dari entry
-  takeProfit3: number; // +30% dari entry
+  takeProfit1: number; // +5% dari entry
+  takeProfit2: number; // +10% dari entry
+  takeProfit3: number; // +15% dari entry
   fibonacci: FibonacciLevels;
 }
 
@@ -703,9 +703,12 @@ export async function calculateSpotLevels(
   // dianggap gagal, cocok untuk coin yang volatil).
   const stopLossTight = entry * 0.97; // -3%
   const stopLossWide = entry * 0.95; // -5%
-  const takeProfit1 = entry * 1.1; // +10%
-  const takeProfit2 = entry * 1.2; // +20%
-  const takeProfit3 = entry * 1.3; // +30%
+  // TP dipersempit dari +10/+20/+30% ke +5/+10/+15% karena gaya
+  // trading harian di TF 30m-1h butuh target yang lebih realistis
+  // dicapai dalam rentang waktu pendek, bukan target swing besar.
+  const takeProfit1 = entry * 1.05; // +5%
+  const takeProfit2 = entry * 1.1; // +10%
+  const takeProfit3 = entry * 1.15; // +15%
 
   return {
     entry,
