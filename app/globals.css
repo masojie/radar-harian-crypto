@@ -1,0 +1,120 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+
+/* TikTok Sans — free open-source typeface, tiktok.com/font (github.com/tiktok/TikTokSans) */
+@font-face {
+  font-family: "TikTok Sans";
+  src: url("https://sf16-scmcdn-va.ibytedtos.com/goofy/tiktok/web/fe/tiktoksans/TikTokSansVF.ttf")
+    format("truetype-variations");
+  font-weight: 300 900;
+  font-stretch: 75% 125%;
+  font-display: swap;
+}
+
+:root {
+  /* ---- Color: dark trading-terminal base, not generic near-black ---- */
+  --bg: #10131a;
+  --bg-raised: #161a24;
+  --bg-panel: #1a1f2b;
+  --line: #262c3a;
+  --line-soft: #1e2330;
+
+  --ink: #e7e9f0;
+  --ink-dim: #9aa1b8;
+  --ink-faint: #5c6280;
+
+  --up: #2ecc8f;
+  --up-dim: #1c7a56;
+  --up-bg: rgba(46, 204, 143, 0.1);
+
+  --down: #f0524a;
+  --down-dim: #a13a35;
+  --down-bg: rgba(240, 82, 74, 0.1);
+
+  --warn: #d9a441;
+  --warn-bg: rgba(217, 164, 65, 0.1);
+
+  --accent: #4d8dff;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+
+  font-family: "TikTok Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f4f5f8;
+    --bg-raised: #ffffff;
+    --bg-panel: #ffffff;
+    --line: #e1e4ec;
+    --line-soft: #ebedf3;
+    --ink: #161a24;
+    --ink-dim: #5c6280;
+    --ink-faint: #9aa1b8;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-padding-top: env(safe-area-inset-top, 0px);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.mono {
+  font-family: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* Horizontal-scroll containers never leak past viewport */
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.scroll-x::-webkit-scrollbar {
+  height: 6px;
+}
+.scroll-x::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 3px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
