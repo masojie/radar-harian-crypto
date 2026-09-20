@@ -36,7 +36,6 @@ function buildScanMessage(results: ScanResult[]): string {
   top10.forEach((r, i) => {
     lines.push(`${i + 1}. \ud83d\udfe2 ${r.symbol}IDR - RSI ${r.rsi.toFixed(1)} - Rp ${formatRupiah(r.price)}`);
   });
-
   lines.push("");
   lines.push(`_Ditemukan ${results.length} coin bullish dari maksimal 50 coin yang di-scan (volume >= Rp 500 Jt)._`);
   lines.push("_Ini deteksi momentum yang SUDAH mulai bergerak, bukan prediksi masa depan. Untuk detail lengkap, ketik /analisa <coin>._");
@@ -48,6 +47,11 @@ async function buildMultiTimeframeMessage(result: MultiTimeframeSignal): Promise
   const lines: string[] = [`\ud83d\udcca *ANALISA MULTI-TIMEFRAME - ${result.symbol}*\n`];
 
   lines.push(`Harga saat ini: Rp ${formatRupiah(result.currentPrice)}\n`);
+
+  // Link chart TradingView yang di-embed langsung di web Indodax -
+  // ini chart PERSIS sama yang user lihat kalau buka chart coin di
+  // app/web Indodax mereka sendiri (format URL: indodax.com/chart/<SYMBOL>).
+  lines.push(`📈 [Lihat chart di Indodax](https://indodax.com/chart/${result.symbol})\n`);
 
   // Tampilkan vote per timeframe supaya user bisa cocokkan sendiri
   // di app Indodax mereka - transparansi ini yang bikin sinyal bisa
