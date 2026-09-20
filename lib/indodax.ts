@@ -545,7 +545,17 @@ export async function analyzeMultiTimeframe(
         label: tfConfig.label,
         weight: tfConfig.weight,
         emaBullish: ema9 > ema50,
-        rsiBullish: rsiValue >= 50,
+        // RSI bullish = OVERSOLD (RSI < 35), bukan RSI tinggi.
+        // Diubah dari rsiValue >= 50 supaya konsisten dengan
+        // scanBullishCoins (channel notif otomatis) yang juga
+        // pakai kriteria RSI < 35 sebagai sinyal reversal/entry.
+        // Sebelumnya /analisa dan channel notif punya definisi
+        // "bullish" yang berlawanan arah (channel: RSI rendah,
+        // /analisa: RSI tinggi) - user secara eksplisit memilih
+        // hanya percaya RSI rendah/oversold sebagai basis BUY,
+        // menolak breakout murni yang RSI-nya sudah tinggi duluan
+        // meski EMA dan volume mendukung.
+        rsiBullish: rsiValue < 35,
         rsiValue,
         price: candles[candles.length - 1].close,
         volumeRatio,
