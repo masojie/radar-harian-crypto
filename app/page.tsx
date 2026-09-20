@@ -5,6 +5,14 @@ import HistoryStats from "./components/HistoryStats";
 import TabShell from "./components/TabShell";
 import { timeAgo } from "@/lib/format-dashboard";
 
+// PENTING (bug yang ketauan lewat build test): jangan cuma pakai revalidate.
+// Next.js App Router defaultnya mencoba PRERENDER STATIC halaman ini di BUILD
+// TIME. Kalau Supabase tidak reachable saat build berlangsung (salah env var,
+// gangguan jaringan sesaat), seluruh proses build Vercel GAGAL TOTAL - bukan
+// cuma dashboard ini yang error, tapi semua route lain ikut gagal di-deploy.
+// force-dynamic memaksa halaman ini di-render di server pada TIAP REQUEST,
+// bukan sekali saat build - cocok untuk data yang berubah tiap 15 menit ini.
+export const dynamic = "force-dynamic";
 export const revalidate = 60;
 
 export default async function Page() {
