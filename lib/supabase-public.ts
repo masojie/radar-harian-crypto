@@ -72,7 +72,14 @@ export interface SignalOutcomeRow {
   max_price: number | null;
   min_price: number | null;
   closed_at: string | null;
-  expires_at: string;
+  /**
+   * PENTING: nama kolom di database ini "expirers_at" (typo bawaan dari
+   * lib/outcome.ts saat insert), BUKAN "expires_at". Kalau bikin query
+   * manual pakai "expires_at" akan error karena kolomnya tidak ada.
+   * Sengaja tidak diperbaiki di sini karena ini cuma membaca skema yang
+   * sudah ada - perbaikan nama kolom perlu migration terpisah di lib/outcome.ts.
+   */
+  expirers_at: string;
 }
 
 /** Sinyal bullish terbaru — jadi feed "Radar Live". */
