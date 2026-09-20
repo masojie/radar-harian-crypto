@@ -133,7 +133,7 @@ export async function GET(request: Request) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL;
     if (appUrl) {
       lines.push("");
-      lines.push(`📊 [Lihat dashboard live](${appUrl})`);
+      lines.push(`⚡ *RadarView* — [pantau live di sini](${appUrl})`);
     }
 
     // Telegram dikirim DULU - ini fungsi utama endpoint ini dan tidak
