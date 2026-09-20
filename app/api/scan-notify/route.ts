@@ -31,6 +31,14 @@ function formatRupiah(n: number): string {
  * ini TIDAK BOLEH menghalangi notifikasi Telegram: kalau Supabase
  * bermasalah, pesan tetap harus terkirim seperti biasa.
  *
+ * Pesan Telegram juga menyertakan LINK ke dashboard web (Tab Radar),
+ * supaya orang yang lihat notif bisa langsung cek visualnya dengan
+ * data real yang sama persis dengan yang baru disimpan ke Supabase -
+ * bukan link statis, tapi mengarah ke halaman yang auto-refresh tiap
+ * 60 detik dari tabel yang sama (bullish_scans). Kalau env var
+ * NEXT_PUBLIC_APP_URL belum diset, baris link ini dilewati saja
+ * (tidak menggagalkan pengiriman notif).
+ *
  * Keamanan: wajib ada header Authorization: Bearer <CRON_SECRET>
  * yang cocok dengan env var CRON_SECRET, supaya orang lain di
  * internet tidak bisa sembarangan memicu endpoint ini.
@@ -118,6 +126,15 @@ export async function GET(request: Request) {
     lines.push(
       "_Ini deteksi momentum yang SUDAH mulai bergerak, bukan prediksi masa depan._"
     );
+
+    // Link ke dashboard - dilewati kalau env var belum diset, tidak
+    // menggagalkan notif. Pakai format link Markdown karena
+    // sendTelegramMessage sudah pakai parse_mode: "Markdown".
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (appUrl) {
+      lines.push("");
+      lines.push(`📊 [Lihat dashboard live](${appUrl})`);
+    }
 
     // Telegram dikirim DULU - ini fungsi utama endpoint ini dan tidak
     // boleh terganggu oleh apapun yang terjadi di langkah penyimpanan.
