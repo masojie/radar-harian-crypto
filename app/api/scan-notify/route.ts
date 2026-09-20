@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { scanBullishCoins, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels } from "@/lib/indodax";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { saveBullishScanResults, type BullishScanRow } from "@/lib/supabase";
+import { openSignalIfNew } from "@/lib/outcome";
 
 function formatRupiah(n: number): string {
   return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
@@ -127,9 +128,28 @@ export async function GET(request: Request) {
     // lewat field savedToDatabase pada response - tidak pernah membuat
     // endpoint ini gagal atau melempar error ke scheduler eksternal.
     let savedToDatabase = 0;
+    let positionsOpened = 0;
     try {
-      await saveBullishScanResults(rowsToSave);
-      savedToDatabase = rowsToSave.length;
+      const saved = await saveBullishScanResults(rowsToSave);
+      savedToDatabase = saved.length;
+
+      // Buka posisi outcome untuk tiap sinyal - HANYA kalau koin itu
+      // belum punya posisi open (satu kejadian = satu posisi). Gagal di
+      // sini tidak boleh membatalkan apa pun yang sudah terkirim.
+      for (const s of saved) {
+        try {
+          const opened = await openSignalIfNew({
+            signalId: s.id,
+            symbol: s.symbol,
+            signaledAt: s.scanned_at,
+            entryPrice: s.price,
+            rsi: s.rsi,
+          });
+          if (opened) positionsOpened++;
+        } catch (posError) {
+          console.error(`Gagal buka posisi outcome ${s.symbol}:`, posError);
+        }
+      }
     } catch (dbError) {
       const dbMessage =
         dbError instanceof Error ? dbError.message : "Unknown database error";
@@ -141,6 +161,7 @@ export async function GET(request: Request) {
       found: results.length,
       notified: true,
       savedToDatabase,
+      positionsOpened,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

@@ -684,8 +684,9 @@ export interface SpotPositionLevels {
 }
 
 /**
- * Hitung level posisi SPOT: entry (harga saat ini), stop loss
- * (-1%), dan tiga target take profit bertingkat (+10%, +20%, +30%).
+ * Hitung level posisi SPOT: entry (harga saat ini), dua pilihan stop
+ * loss (-3% ketat / -5% longgar), dan tiga target take profit
+ * bertingkat (+5%, +10%, +15%).
  * Fibonacci retracement dari swing high/low candle 1 jam disertakan
  * sebagai konteks tambahan, bukan basis TP.
  *
@@ -755,6 +756,10 @@ const SCAN_MIN_VOLUME_IDR = 300_000_000; // Rp 300 juta
 // timeout function serverless Vercel.
 const SCAN_MAX_COINS = 120;
 
+// Stablecoin tidak mungkin naik 5% - selalu lolos RSI<35 secara semu
+// dan mencemari statistik sinyal. Dikeluarkan dari scan.
+const SCAN_EXCLUDED_SYMBOLS = new Set(["USDT", "USDC", "DAI", "TUSD", "BUSD", "FDUSD"]);
+
 /**
  * Scan cepat semua coin di Indodax yang volumenya cukup besar,
  * cek EMA9/EMA50 + RSI14 di timeframe 1 JAM SAJA (bukan 5
@@ -791,6 +796,7 @@ export async function scanBullishCoins(): Promise<ScanResult[]> {
   const topCoins = await getTopVolumeCoins(200); // ambil banyak dulu
   const eligibleCoins = topCoins
     .filter((c) => c.volumeIdr >= SCAN_MIN_VOLUME_IDR)
+    .filter((c) => !SCAN_EXCLUDED_SYMBOLS.has(c.symbol))
     .slice(0, SCAN_MAX_COINS);
 
   // Cek tiap coin secara paralel - dengan Promise.allSettled supaya

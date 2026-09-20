@@ -91,12 +91,24 @@ export interface BullishScanRow {
  */
 export async function saveBullishScanResults(
   rows: BullishScanRow[]
-): Promise<void> {
-  const { error } = await supabaseAdmin.from("bullish_scans").insert(rows);
+): Promise<Array<{ id: number; symbol: string; scanned_at: string; price: number; rsi: number }>> {
+  // .select() supaya id + scanned_at tiap baris dikembalikan - dibutuhkan
+  // untuk membuka posisi di tabel signal_outcomes (lib/outcome.ts).
+  const { data, error } = await supabaseAdmin
+    .from("bullish_scans")
+    .insert(rows)
+    .select("id, symbol, scanned_at, price, rsi");
 
   if (error) {
     throw new Error(
       `Gagal simpan hasil scan bullish ke Supabase: ${error.message}`
     );
   }
+  return (data ?? []).map((r) => ({
+    id: Number(r.id),
+    symbol: String(r.symbol),
+    scanned_at: String(r.scanned_at),
+    price: Number(r.price),
+    rsi: Number(r.rsi),
+  }));
 }
