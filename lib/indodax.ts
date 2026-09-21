@@ -853,6 +853,70 @@ export async function scanBullishCoins(): Promise<ScanResult[]> {
   return bullishCoins;
 }
 
+/**
+ * Ringkasan scan untuk pesan heartbeat: berapa coin yang benar-benar
+ * dicek, dan coin mana yang RSI 1 jamnya paling dekat ke ambang.
+ *
+ * Fungsi TERPISAH dari scanBullishCoins() dengan sengaja. scanBullishCoins
+ * dipakai juga oleh command /scan di webhook dan oleh /api/scan-notify,
+ * jadi bentuk return-nya tidak boleh berubah.
+ *
+ * Aturan seleksi coin dan hitungan RSI sama persis dengan
+ * scanBullishCoins (volume minimum, stablecoin dibuang, candle yang
+ * belum tutup dibuang), supaya angka di heartbeat cocok dengan yang
+ * dipakai untuk memutuskan kirim notif sinyal.
+ */
+export interface ScanSummary {
+  checkedCount: number;
+  nearest: ScanResult[];
+}
+
+export async function scanNearestToThreshold(
+  limit = 3
+): Promise<ScanSummary> {
+  const topCoins = await getTopVolumeCoins(200);
+  const eligibleCoins = topCoins
+    .filter((c) => c.volumeIdr >= SCAN_MIN_VOLUME_IDR)
+    .filter((c) => !SCAN_EXCLUDED_SYMBOLS.has(c.symbol))
+    .slice(0, SCAN_MAX_COINS);
+
+  const settled = await Promise.allSettled(
+    eligibleCoins.map(async (coin) => {
+      const candles = await getIntradayCandles(`${coin.symbol}IDR`, "60", 60);
+      if (candles.length < 20) {
+        throw new Error(`Data candle kurang untuk ${coin.symbol}IDR`);
+      }
+
+      const closedCandles = candles.slice(0, -1);
+      const candlesToUse =
+        closedCandles.length >= 50 ? closedCandles : candles;
+      const closes = candlesToUse.map((c) => c.close);
+      const rsiArr = calculateRSI(closes, 14);
+      const rsi = rsiArr[closes.length - 1];
+
+      if (Number.isNaN(rsi)) {
+        throw new Error(`RSI tidak valid untuk ${coin.symbol}IDR`);
+      }
+
+      return {
+        symbol: coin.symbol,
+        price: candles[candles.length - 1].close,
+        rsi,
+        volumeIdr: coin.volumeIdr,
+      } satisfies ScanResult;
+    })
+  );
+
+  const valid: ScanResult[] = [];
+  for (const r of settled) {
+    if (r.status === "fulfilled") valid.push(r.value);
+  }
+
+  valid.sort((a, b) => a.rsi - b.rsi);
+
+  return { checkedCount: valid.length, nearest: valid.slice(0, limit) };
+}
+
 
 // ============================================================
 // TAMBAHAN UNTUK lib/indodax.ts

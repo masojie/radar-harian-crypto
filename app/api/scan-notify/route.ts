@@ -1,12 +1,63 @@
 // Redeploy trigger: refresh CRON_SECRET env var
 import { NextResponse } from "next/server";
-import { scanBullishCoins, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels } from "@/lib/indodax";
+import { scanBullishCoins, scanNearestToThreshold, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels } from "@/lib/indodax";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { saveBullishScanResults, type BullishScanRow } from "@/lib/supabase";
 import { openSignalIfNew } from "@/lib/outcome";
 
 function formatRupiah(n: number): string {
   return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
+}
+
+// ============================================================
+// HEARTBEAT: pesan senyap berkala saat TIDAK ada sinyal, supaya
+// channel tidak terlihat mati ketika pasar sedang naik.
+//
+// Cron jalan tiap 5 menit, jadi jadwal ditentukan dari jam WIB:
+// kirim hanya kalau jam WIB genap DAN menit 0-4. Itu tepat satu
+// kali per 2 jam, tanpa tabel penyimpan status di database.
+// ============================================================
+const HEARTBEAT_EVERY_HOURS = 2;
+const HEARTBEAT_WINDOW_MINUTES = 5; // sama dengan interval cron
+
+function isHeartbeatSlot(now: Date): boolean {
+  // WIB = UTC+7, tanpa daylight saving.
+  const wib = new Date(now.getTime() + 7 * 3600 * 1000);
+  const hour = wib.getUTCHours();
+  const minute = wib.getUTCMinutes();
+  return hour % HEARTBEAT_EVERY_HOURS === 0 && minute < HEARTBEAT_WINDOW_MINUTES;
+}
+
+function formatWibClock(now: Date): string {
+  const wib = new Date(now.getTime() + 7 * 3600 * 1000);
+  const hh = String(wib.getUTCHours()).padStart(2, "0");
+  const mm = String(wib.getUTCMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+async function sendHeartbeat(now: Date): Promise<boolean> {
+  const summary = await scanNearestToThreshold(3);
+
+  const lines: string[] = [
+    "\u{1F493} *RADAR HIDUP - Belum Ada Sinyal*",
+    "",
+    `Scan ${formatWibClock(now)} WIB: ${summary.checkedCount} coin dicek, tidak ada yang RSI 1 jam di bawah 35.`,
+  ];
+
+  if (summary.nearest.length > 0) {
+    lines.push("", "Terdekat ke ambang:");
+    summary.nearest.forEach((r, i) => {
+      lines.push(`${i + 1}. ${r.symbol} - RSI ${r.rsi.toFixed(1)}`);
+    });
+  }
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (appUrl) {
+    lines.push("", `\u26A1 [RadarView](${appUrl})`);
+  }
+
+  await sendTelegramMessage(lines.join("\n"), undefined, { silent: true });
+  return true;
 }
 
 /**
@@ -56,7 +107,27 @@ export async function GET(request: Request) {
     const results = await scanBullishCoins();
 
     if (results.length === 0) {
-      return NextResponse.json({ ok: true, found: 0, notified: false, savedToDatabase: 0 });
+      // Tidak ada sinyal. Kirim heartbeat senyap tiap 2 jam saja.
+      // Gagal kirim heartbeat TIDAK boleh membuat endpoint error ke
+      // cron, jadi dibungkus try-catch terpisah.
+      let heartbeatSent = false;
+      const now = new Date();
+      if (isHeartbeatSlot(now)) {
+        try {
+          heartbeatSent = await sendHeartbeat(now);
+        } catch (hbError) {
+          const hbMessage =
+            hbError instanceof Error ? hbError.message : "Unknown heartbeat error";
+          console.error("Scan-notify: gagal kirim heartbeat:", hbMessage);
+        }
+      }
+      return NextResponse.json({
+        ok: true,
+        found: 0,
+        notified: false,
+        savedToDatabase: 0,
+        heartbeatSent,
+      });
     }
 
     const lines: string[] = ["🚨 *SCAN OTOMATIS - Momentum Bullish Terdeteksi*\n"];

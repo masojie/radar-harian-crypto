@@ -10,10 +10,12 @@
  *   TELEGRAM_CHAT_ID dari env var (perilaku lama, buat kirim ke channel
  *   radar harian). Diisi eksplisit dipakai webhook buat balas ke chat
  *   ID pengirim pesan, yang beda-beda tiap user.
+ * @param options.silent - true = kirim tanpa bunyi notifikasi
  */
 export async function sendTelegramMessage(
   text: string,
-  targetChatId?: string
+  targetChatId?: string,
+  options?: { silent?: boolean }
 ): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = targetChatId ?? process.env.TELEGRAM_CHAT_ID;
@@ -33,6 +35,9 @@ export async function sendTelegramMessage(
       chat_id: chatId,
       text,
       parse_mode: "Markdown",
+      // Senyap: pesan tetap masuk, tapi HP tidak bunyi/getar. Dipakai
+      // untuk heartbeat. Default false = perilaku lama tidak berubah.
+      disable_notification: options?.silent === true,
     }),
   });
 
