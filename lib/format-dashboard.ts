@@ -4,7 +4,7 @@
  */
 
 export const RSI_DEEP = 25;
-export const RSI_OVERSOLD = 35;
+export const RSI_OVERSOLD = 40;
 
 export function formatIDR(value: number): string {
   if (value >= 1000) {

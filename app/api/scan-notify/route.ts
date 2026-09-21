@@ -41,7 +41,7 @@ async function sendHeartbeat(now: Date): Promise<boolean> {
   const lines: string[] = [
     "\u{1F493} *RADAR HIDUP - Belum Ada Sinyal*",
     "",
-    `Scan ${formatWibClock(now)} WIB: ${summary.checkedCount} coin dicek, tidak ada yang RSI 1 jam di bawah 35.`,
+    `Scan ${formatWibClock(now)} WIB: ${summary.checkedCount} coin dicek, tidak ada yang RSI 1 jam di bawah 40.`,
   ];
 
   if (summary.nearest.length > 0) {

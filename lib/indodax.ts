@@ -411,6 +411,12 @@ const MTF_TIMEFRAMES = [
 ] as const;
 
 const MTF_TOTAL_WEIGHT = 8;
+// Ambang RSI oversold yang dipakai SEMUA jalur: scanBullishCoins (channel notif),
+// scanNearestToThreshold (heartbeat) dan analyzeMultiTimeframe (/analisa).
+// Satu sumber angka supaya ketiganya tidak pernah beda arah lagi.
+// Riwayat perubahan ada di blok CATATAN di atas scanBullishCoins().
+const RSI_OVERSOLD_THRESHOLD = 40;
+
 const MTF_WEIGHTED_THRESHOLD = 6;
 const VOLUME_CONFIRMATION_THRESHOLD = 1.5;
 
@@ -545,17 +551,17 @@ export async function analyzeMultiTimeframe(
         label: tfConfig.label,
         weight: tfConfig.weight,
         emaBullish: ema9 > ema50,
-        // RSI bullish = OVERSOLD (RSI < 35), bukan RSI tinggi.
+        // RSI bullish = OVERSOLD (RSI < 40), bukan RSI tinggi.
         // Diubah dari rsiValue >= 50 supaya konsisten dengan
         // scanBullishCoins (channel notif otomatis) yang juga
-        // pakai kriteria RSI < 35 sebagai sinyal reversal/entry.
+        // pakai kriteria RSI < 40 sebagai sinyal reversal/entry.
         // Sebelumnya /analisa dan channel notif punya definisi
         // "bullish" yang berlawanan arah (channel: RSI rendah,
         // /analisa: RSI tinggi) - user secara eksplisit memilih
         // hanya percaya RSI rendah/oversold sebagai basis BUY,
         // menolak breakout murni yang RSI-nya sudah tinggi duluan
         // meski EMA dan volume mendukung.
-        rsiBullish: rsiValue < 35,
+        rsiBullish: rsiValue < RSI_OVERSOLD_THRESHOLD,
         rsiValue,
         price: candles[candles.length - 1].close,
         volumeRatio,
@@ -756,7 +762,7 @@ const SCAN_MIN_VOLUME_IDR = 300_000_000; // Rp 300 juta
 // timeout function serverless Vercel.
 const SCAN_MAX_COINS = 120;
 
-// Stablecoin tidak mungkin naik 5% - selalu lolos RSI<35 secara semu
+// Stablecoin tidak mungkin naik 5% - selalu lolos RSI<40 secara semu
 // dan mencemari statistik sinyal. Dikeluarkan dari scan.
 const SCAN_EXCLUDED_SYMBOLS = new Set(["USDT", "USDC", "DAI", "TUSD", "BUSD", "FDUSD"]);
 
@@ -773,7 +779,7 @@ const SCAN_EXCLUDED_SYMBOLS = new Set(["USDT", "USDC", "DAI", "TUSD", "BUSD", "F
  * cepat daripada cek manual satu-satu - tapi tidak bisa tahu
  * SEBELUM pergerakan itu dimulai.
  *
- * Mengembalikan coin yang RSI14-nya di bawah 35 (oversold, kandidat
+ * Mengembalikan coin yang RSI14-nya di bawah 40 (oversold, kandidat
  * mau trending/reversal naik), diurutkan dari RSI terendah ke
  * tertinggi (paling oversold di atas).
  *
@@ -787,9 +793,13 @@ const SCAN_EXCLUDED_SYMBOLS = new Set(["USDT", "USDC", "DAI", "TUSD", "BUSD", "F
  * dan SCAN_MAX_COINS dinaikkan ke 120 di waktu yang sama, supaya coin
  * volume kecil-menengah benar-benar ikut dihitung RSI-nya, bukan
  * kepotong duluan di tahap slice sebelum sempat dicek.
+ *
+ * CATATAN 3: threshold dilonggarkan dari 35 ke 40 atas permintaan user,
+ * supaya sinyal di channel notif lebih sering muncul (tiap scan 5 menit).
+ * Angka ini dipakai bersama oleh scanBullishCoins (channel), scanNearestToThreshold
+ * (heartbeat), dan analyzeMultiTimeframe (/analisa) lewat konstanta yang sama,
+ * jangan di-hardcode terpisah lagi supaya ketiganya tidak beda arah.
  */
-const RSI_OVERSOLD_THRESHOLD = 35;
-
 export async function scanBullishCoins(): Promise<ScanResult[]> {
   // Ambil semua coin, urutkan volume, filter yang di bawah ambang
   // batas, lalu potong ke maksimal SCAN_MAX_COINS.

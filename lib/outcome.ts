@@ -1,4 +1,4 @@
-// Pelacak hasil sinyal BUY: tiap sinyal RSI<35 dibuka sebagai "posisi",
+// Pelacak hasil sinyal BUY: tiap sinyal RSI<40 dibuka sebagai "posisi",
 // lalu dicek berkala pakai candle Indodax asli - kena TP atau SL duluan.
 //
 // Dua SL dilacak sekaligus (ketat -3% dan longgar -5%) supaya backtest
@@ -16,7 +16,7 @@ export const TP2_PCT = 0.1;
 export const TP3_PCT = 0.15;
 export const TIMEOUT_HOURS = 24;
 // Sinyal baru untuk koin yang sama dianggap KEJADIAN YANG SAMA selama
-// posisi lamanya masih open. Tanpa ini, 1 koin yang terus RSI<35
+// posisi lamanya masih open. Tanpa ini, 1 koin yang terus RSI<40
 // tercatat puluhan kali dan menggelembungkan jumlah sinyal.
 
 export type Outcome = "tp1" | "tp2" | "tp3" | "sl" | "timeout";
