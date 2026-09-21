@@ -30,7 +30,16 @@ export interface RadarView {
   activeCount: number;
   /** Jumlah baris mentah yang dikelompokkan. */
   sampleCount: number;
+  /**
+   * True kalau sinyal terakhir sudah lebih tua dari jendela hidup. Tabel
+   * bullish_scans hanya terisi saat ada coin oversold, jadi "tidak ada baris
+   * baru" berarti "tidak ada coin oversold sekarang", bukan "scan terakhir".
+   */
+  stale: boolean;
 }
+
+/** Scan berjalan tiap 5 menit. Lewat dari ini berarti tidak ada coin oversold. */
+export const LIVE_WINDOW_MS = 15 * 60_000;
 
 /**
  * Baris dari satu scan biasanya berbagi scanned_at yang sama, tapi kita tidak
@@ -39,9 +48,9 @@ export interface RadarView {
  */
 const BATCH_WINDOW_MS = 90_000;
 
-export function buildRadarView(rows: BullishScanRow[]): RadarView {
+export function buildRadarView(rows: BullishScanRow[], nowMs: number = Date.now()): RadarView {
   if (rows.length === 0) {
-    return { tracks: [], latestScanAt: null, activeCount: 0, sampleCount: 0 };
+    return { tracks: [], latestScanAt: null, activeCount: 0, sampleCount: 0, stale: true };
   }
 
   const times = rows.map((r) => Date.parse(r.scanned_at));
@@ -70,7 +79,11 @@ export function buildRadarView(rows: BullishScanRow[]): RadarView {
       count: chrono.length,
       firstSeenAt: first.scanned_at,
       lastSeenAt: latest.scanned_at,
-      active: latestMs - Date.parse(latest.scanned_at) <= BATCH_WINDOW_MS,
+      // Aktif = ikut batch scan terbaru DAN batch itu masih segar. Tanpa cek
+      // jam sekarang, coin dari 5 jam lalu tampil seolah masih oversold.
+      active:
+        latestMs - Date.parse(latest.scanned_at) <= BATCH_WINDOW_MS &&
+        nowMs - latestMs <= LIVE_WINDOW_MS,
       priceChangePct:
         first.price > 0 ? ((latest.price - first.price) / first.price) * 100 : 0,
     });
@@ -87,5 +100,6 @@ export function buildRadarView(rows: BullishScanRow[]): RadarView {
     latestScanAt,
     activeCount: tracks.filter((t) => t.active).length,
     sampleCount: rows.length,
+    stale: nowMs - latestMs > LIVE_WINDOW_MS,
   };
 }

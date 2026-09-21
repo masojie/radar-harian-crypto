@@ -19,7 +19,7 @@ function detectionCount(track: CoinTrack): string {
   return `${track.count}x dalam ${formatSpan(span)}`;
 }
 
-function Hero({ track }: { track: CoinTrack }) {
+function Hero({ track, stale }: { track: CoinTrack; stale: boolean }) {
   const { latest } = track;
   const zone = rsiZone(latest.rsi);
 
@@ -35,8 +35,14 @@ function Hero({ track }: { track: CoinTrack }) {
       <span className="hero-rings" aria-hidden="true" />
 
       <div className="hero-top">
-        <p className="hero-kicker">RSI terendah di scan terakhir</p>
-        <span className={`chip chip-${zone}`}>{rsiZoneLabel(zone)}</span>
+        <p className="hero-kicker">
+          {stale
+            ? `Terakhir terdeteksi ${timeAgo(track.lastSeenAt)}`
+            : "RSI terendah di scan terakhir"}
+        </p>
+        <span className={stale ? "chip chip-neutral" : `chip chip-${zone}`}>
+          {stale ? "Sudah lewat" : rsiZoneLabel(zone)}
+        </span>
       </div>
 
       <div className="hero-main">
@@ -142,6 +148,19 @@ function TrackRow({ track }: { track: CoinTrack }) {
   );
 }
 
+function QuietBanner({ latestScanAt }: { latestScanAt: string | null }) {
+  return (
+    <div className="empty empty-inline" role="status">
+      <span className="empty-rings" aria-hidden="true" />
+      <h2>Tidak ada coin oversold sekarang</h2>
+      <p>
+        Scan jalan tiap 5 menit dan hanya menyimpan coin dengan RSI di bawah 35.
+        {latestScanAt ? ` Sinyal terakhir masuk ${timeAgo(latestScanAt)}.` : ""}
+      </p>
+    </div>
+  );
+}
+
 export default function RadarTable({ view }: { view: RadarView }) {
   if (view.tracks.length === 0) {
     return (
@@ -157,7 +176,8 @@ export default function RadarTable({ view }: { view: RadarView }) {
 
   return (
     <div className="stack stagger">
-      <Hero track={lead} />
+      {view.stale && <QuietBanner latestScanAt={view.latestScanAt} />}
+      <Hero track={lead} stale={view.stale} />
 
       {rest.length > 0 && (
         <section aria-labelledby="track-title">
@@ -165,7 +185,7 @@ export default function RadarTable({ view }: { view: RadarView }) {
             Coin lain yang terpantau
           </h2>
           <p className="section-note">
-            Dikelompokkan per coin dari {view.sampleCount} pembacaan scan terakhir.
+            Dikelompokkan per coin dari {view.sampleCount} pembacaan sinyal terakhir.
           </p>
           <ul className="tracks">
             {rest.map((track) => (

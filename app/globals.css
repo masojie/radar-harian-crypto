@@ -1386,3 +1386,19 @@ button {
     scroll-behavior: auto !important;
   }
 }
+
+/* Banner ringkas saat tidak ada coin oversold sekarang (bukan halaman kosong). */
+.empty-inline {
+  padding: 22px 20px;
+}
+.empty-inline .empty-rings {
+  width: 200px;
+  height: 200px;
+  margin: -100px 0 0 -100px;
+}
+.empty-inline h2 {
+  font-size: 15px;
+}
+.empty-inline p {
+  font-size: 13px;
+}

@@ -72,17 +72,11 @@ export interface SignalOutcomeRow {
   max_price: number | null;
   min_price: number | null;
   closed_at: string | null;
-  /**
-   * PENTING: nama kolom di database ini "expirers_at" (typo bawaan dari
-   * lib/outcome.ts saat insert), BUKAN "expires_at". Kalau bikin query
-   * manual pakai "expires_at" akan error karena kolomnya tidak ada.
-   * Sengaja tidak diperbaiki di sini karena ini cuma membaca skema yang
-   * sudah ada - perbaikan nama kolom perlu migration terpisah di lib/outcome.ts.
-   */
-  expirers_at: string;
+  /** Batas waktu posisi (24 jam sejak sinyal). Nama kolom di DB: expires_at. */
+  expires_at: string;
 }
 
-/** Sinyal bullish terbaru — jadi feed "Radar Live". */
+/** Sinyal bullish terbaru â jadi feed "Radar Live". */
 export async function getLatestBullishScans(limit = 30) {
   const { data, error } = await supabasePublic
     .from("bullish_scans")
@@ -94,7 +88,7 @@ export async function getLatestBullishScans(limit = 30) {
   return (data ?? []) as BullishScanRow[];
 }
 
-/** Posisi yang masih terbuka — belum kena TP/SL/timeout. */
+/** Posisi yang masih terbuka â belum kena TP/SL/timeout. */
 export async function getOpenSignals(limit = 50) {
   const { data, error } = await supabasePublic
     .from("signal_outcomes")
@@ -107,7 +101,7 @@ export async function getOpenSignals(limit = 50) {
   return (data ?? []) as SignalOutcomeRow[];
 }
 
-/** Riwayat sinyal yang sudah selesai — dasar hitung win rate. */
+/** Riwayat sinyal yang sudah selesai â dasar hitung win rate. */
 export async function getClosedSignals(limit = 100) {
   const { data, error } = await supabasePublic
     .from("signal_outcomes")
@@ -118,33 +112,4 @@ export async function getClosedSignals(limit = 100) {
 
   if (error) throw new Error(`Gagal ambil riwayat sinyal: ${error.message}`);
   return (data ?? []) as SignalOutcomeRow[];
-}
-
-/**
- * Harga terakhir tiap simbol.
- *
- * PENTING (bug yang pernah salah): jangan ambil ini dari radar_scans.
- * radar_scans cuma keisi 1x SEHARI (cron /api/radar jam 12 UTC), sedangkan
- * bullish_scans keisi tiap 15 MENIT lewat scheduler eksternal (cron-job.org)
- * yang memicu /api/scan-notify — sumber yang sama dengan notif Telegram.
- * Kalau pakai radar_scans, harga di Tab Posisi Aktif bisa basi sampai 24 jam
- * dan progress bar TP/SL jadi bohong.
- *
- * Ini bukan harga live per-detik (tetap ngikut siklus 15 menit bullish_scans),
- * tapi konsisten dengan yang dikirim ke channel — bukan data dari sumber lain.
- */
-export async function getLatestPrices() {
-  const { data, error } = await supabasePublic
-    .from("bullish_scans")
-    .select("symbol, price, scanned_at")
-    .order("scanned_at", { ascending: false })
-    .limit(300);
-
-  if (error) throw new Error(`Gagal ambil harga terakhir: ${error.message}`);
-
-  const map = new Map<string, number>();
-  for (const row of (data ?? []) as Pick<BullishScanRow, "symbol" | "price" | "scanned_at">[]) {
-    if (!map.has(row.symbol)) map.set(row.symbol, row.price);
-  }
-  return map;
 }

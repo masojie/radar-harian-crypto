@@ -49,6 +49,10 @@ export default function HistoryStats({ signals }: { signals: SignalOutcomeRow[] 
   }
 
   const total = signals.length;
+  // CST bisa tercatat puluhan kali karena harganya naik turun lewat batas TP/SL,
+  // padahal itu satu koin. Hitung berapa koin unik supaya pembaca tidak salah
+  // mengira ini puluhan koin berbeda.
+  const uniqueCoins = new Set(signals.map((s) => s.symbol)).size;
   const wins = (counts.tp1 ?? 0) + (counts.tp2 ?? 0) + (counts.tp3 ?? 0);
   const losses = counts.sl ?? 0;
   const timeouts = counts.timeout ?? 0;
@@ -83,6 +87,7 @@ export default function HistoryStats({ signals }: { signals: SignalOutcomeRow[] 
           <p className="stat-note">
             {wins} menang, {losses} kalah
             {timeouts > 0 ? `, ${timeouts} timeout` : ""} dari {total} sinyal selesai
+            {uniqueCoins < total ? ` (${uniqueCoins} koin, sebagian muncul berulang)` : ""}
           </p>
 
           <div
@@ -144,7 +149,10 @@ export default function HistoryStats({ signals }: { signals: SignalOutcomeRow[] 
         <h2 id="hist-title" className="section-title">
           Sinyal selesai
         </h2>
-        <p className="section-note">Hasil memakai skenario SL lebar (-5%).</p>
+        <p className="section-note">
+          Hasil memakai skenario SL lebar (-5%). Ini simulasi tanpa biaya trading dan pajak,
+          jadi hasil nyata lebih rendah.
+        </p>
         <ul className="hist">
           {signals.map((s) => {
             const pnl = s.pnl_wide_pct;
