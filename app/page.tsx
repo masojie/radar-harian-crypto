@@ -3,7 +3,9 @@ import RadarTable from "./components/RadarTable";
 import OpenPositions from "./components/OpenPositions";
 import HistoryStats from "./components/HistoryStats";
 import TabShell from "./components/TabShell";
-import { timeAgo } from "@/lib/format-dashboard";
+import AutoRefresh from "./components/AutoRefresh";
+import { buildRadarView } from "@/lib/radar-view";
+import { formatClock, timeAgo } from "@/lib/format-dashboard";
 
 // PENTING (bug yang ketauan lewat build test): jangan cuma pakai revalidate.
 // Next.js App Router defaultnya mencoba PRERENDER STATIC halaman ini di BUILD
@@ -15,6 +17,9 @@ import { timeAgo } from "@/lib/format-dashboard";
 export const dynamic = "force-dynamic";
 export const revalidate = 60;
 
+/** Sinyal dianggap "hidup" kalau yang terakhir masuk kurang dari ini. */
+const LIVE_WINDOW_MS = 30 * 60_000;
+
 export default async function Page() {
   const [bullish, openPositions, closedSignals, latestPrices] = await Promise.all([
     getLatestBullishScans(30),
@@ -23,51 +28,42 @@ export default async function Page() {
     getLatestPrices(),
   ]);
 
-  const lowestRsi = bullish.length > 0 ? bullish.reduce((min, r) => (r.rsi < min.rsi ? r : min)) : null;
-  const lastScanTime = bullish[0]?.scanned_at;
+  const view = buildRadarView(bullish);
+  const lastSignalAt = view.latestScanAt;
+  const isLive = lastSignalAt !== null && Date.now() - Date.parse(lastSignalAt) < LIVE_WINDOW_MS;
 
   return (
-    <main>
-      <header
-        style={{
-          height: 64,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 20px",
-          borderBottom: "1px solid var(--line)",
-          position: "sticky",
-          top: 0,
-          paddingTop: "env(safe-area-inset-top, 0px)",
-          background: "var(--bg)",
-          zIndex: 5,
-        }}
-      >
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>Radar Harian Crypto</div>
-          <div style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>
-            {lastScanTime ? `Scan terakhir ${timeAgo(lastScanTime)}` : "Menunggu scan pertama"}
-          </div>
-        </div>
-        {lowestRsi && (
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 10.5, color: "var(--ink-faint)" }}>RSI terendah saat ini</div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 6, justifyContent: "flex-end" }}>
-              <span className="mono" style={{ fontSize: 20, fontWeight: 700, color: "var(--up)" }}>
-                {lowestRsi.rsi.toFixed(1)}
-              </span>
-              <span style={{ fontSize: 12.5, color: "var(--ink-dim)" }}>{lowestRsi.symbol}</span>
+    <>
+      <AutoRefresh />
+
+      <header className="topbar">
+        <div className="topbar-inner">
+          <div className="brand">
+            <span className="brand-mark" aria-hidden="true" />
+            <div className="brand-text">
+              <h1>Radar Harian Crypto</h1>
+              <p>RSI jenuh jual, spot Indodax</p>
             </div>
           </div>
-        )}
+
+          <p
+            className={isLive ? "status status-live" : "status"}
+            title={lastSignalAt ? formatClock(lastSignalAt) : undefined}
+          >
+            <span className="status-dot" aria-hidden="true" />
+            {lastSignalAt ? `Sinyal ${timeAgo(lastSignalAt)}` : "Menunggu sinyal"}
+          </p>
+        </div>
       </header>
 
-      <TabShell
-        openCount={openPositions.length}
-        radar={<RadarTable rows={bullish} />}
-        positions={<OpenPositions positions={openPositions} latestPrices={latestPrices} />}
-        history={<HistoryStats signals={closedSignals} />}
-      />
-    </main>
+      <main id="konten" className="wrap">
+        <TabShell
+          openCount={openPositions.length}
+          radar={<RadarTable view={view} />}
+          positions={<OpenPositions positions={openPositions} latestPrices={latestPrices} />}
+          history={<HistoryStats signals={closedSignals} />}
+        />
+      </main>
+    </>
   );
 }

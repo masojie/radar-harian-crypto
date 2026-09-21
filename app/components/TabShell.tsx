@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 interface TabShellProps {
   radar: ReactNode;
@@ -11,7 +11,7 @@ interface TabShellProps {
 
 const TABS = [
   { key: "radar", label: "Radar" },
-  { key: "positions", label: "Posisi Aktif" },
+  { key: "positions", label: "Posisi aktif" },
   { key: "history", label: "Riwayat" },
 ] as const;
 
@@ -19,66 +19,71 @@ type TabKey = (typeof TABS)[number]["key"];
 
 export default function TabShell({ radar, positions, history, openCount }: TabShellProps) {
   const [active, setActive] = useState<TabKey>("radar");
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const content: Record<TabKey, ReactNode> = { radar, positions, history };
+  const activeIndex = TABS.findIndex((t) => t.key === active);
+
+  function move(to: number) {
+    const next = (to + TABS.length) % TABS.length;
+    setActive(TABS[next].key);
+    tabRefs.current[next]?.focus();
+  }
+
+  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "ArrowRight") move(activeIndex + 1);
+    else if (e.key === "ArrowLeft") move(activeIndex - 1);
+    else if (e.key === "Home") move(0);
+    else if (e.key === "End") move(TABS.length - 1);
+    else return;
+    e.preventDefault();
+  }
 
   return (
-    <div>
-      <nav
-        style={{
-          display: "flex",
-          gap: 4,
-          borderBottom: "1px solid var(--line)",
-          padding: "0 20px",
-          position: "sticky",
-          top: "calc(64px + env(safe-area-inset-top, 0px))",
-          background: "var(--bg)",
-          zIndex: 4,
-        }}
+    <div className="shell">
+      <div className="dock">
+        <div className="dock-track" role="tablist" aria-label="Pilih tampilan" onKeyDown={onKeyDown}>
+          <span
+            className="dock-thumb"
+            aria-hidden="true"
+            style={{ transform: `translateX(${activeIndex * 100}%)` }}
+          />
+          {TABS.map((tab, i) => {
+            const selected = tab.key === active;
+            const count = tab.key === "positions" && openCount > 0 ? openCount : null;
+            return (
+              <button
+                key={tab.key}
+                ref={(el) => {
+                  tabRefs.current[i] = el;
+                }}
+                type="button"
+                role="tab"
+                id={`tab-${tab.key}`}
+                aria-selected={selected}
+                aria-controls={`panel-${tab.key}`}
+                tabIndex={selected ? 0 : -1}
+                className="dock-tab"
+                onClick={() => setActive(tab.key)}
+              >
+                {tab.label}
+                {count !== null && <span className="dock-count num">{count}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div
+        key={active}
+        id={`panel-${active}`}
+        role="tabpanel"
+        aria-labelledby={`tab-${active}`}
+        tabIndex={0}
+        className="panel"
       >
-        {TABS.map((tab) => {
-          const isActive = active === tab.key;
-          const badge = tab.key === "positions" ? openCount : null;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActive(tab.key)}
-              style={{
-                background: "none",
-                border: "none",
-                borderBottom: isActive ? "2px solid var(--accent)" : "2px solid transparent",
-                color: isActive ? "var(--ink)" : "var(--ink-dim)",
-                fontWeight: isActive ? 600 : 500,
-                fontSize: 13.5,
-                padding: "14px 6px",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 7,
-                transition: "color 0.15s ease, border-color 0.15s ease",
-              }}
-            >
-              {tab.label}
-              {badge !== null && badge > 0 && (
-                <span
-                  className="mono"
-                  style={{
-                    fontSize: 11,
-                    background: "var(--bg-panel)",
-                    color: "var(--ink-dim)",
-                    borderRadius: 999,
-                    padding: "1px 7px",
-                    lineHeight: 1.6,
-                  }}
-                >
-                  {badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </nav>
-      <div style={{ padding: "20px" }}>{content[active]}</div>
+        {content[active]}
+      </div>
     </div>
   );
 }
