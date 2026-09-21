@@ -1,10 +1,11 @@
-import { getLatestBullishScans, getOpenSignals, getClosedSignals, getLatestPrices } from "@/lib/supabase-public";
+import { getLatestBullishScans, getOpenSignals, getClosedSignals } from "@/lib/supabase-public";
+import { getLivePrices } from "@/lib/live-prices";
 import RadarTable from "./components/RadarTable";
 import OpenPositions from "./components/OpenPositions";
 import HistoryStats from "./components/HistoryStats";
 import TabShell from "./components/TabShell";
 import AutoRefresh from "./components/AutoRefresh";
-import { buildRadarView } from "@/lib/radar-view";
+import { buildRadarView, LIVE_WINDOW_MS } from "@/lib/radar-view";
 import { formatClock, timeAgo } from "@/lib/format-dashboard";
 
 // PENTING (bug yang ketauan lewat build test): jangan cuma pakai revalidate.
@@ -17,20 +18,21 @@ import { formatClock, timeAgo } from "@/lib/format-dashboard";
 export const dynamic = "force-dynamic";
 export const revalidate = 60;
 
-/** Sinyal dianggap "hidup" kalau yang terakhir masuk kurang dari ini. */
-const LIVE_WINDOW_MS = 30 * 60_000;
-
 export default async function Page() {
-  const [bullish, openPositions, closedSignals, latestPrices] = await Promise.all([
+  const [bullish, openPositions, closedSignals] = await Promise.all([
     getLatestBullishScans(30),
     getOpenSignals(50),
     getClosedSignals(100),
-    getLatestPrices(),
   ]);
 
-  const view = buildRadarView(bullish);
+  // Harga posisi aktif diambil LIVE dari Indodax, bukan dari bullish_scans yang
+  // bisa basi belasan jam (tabel itu hanya terisi saat ada coin oversold).
+  const live = await getLivePrices(openPositions.map((p) => p.symbol));
+
+  const nowMs = Date.now();
+  const view = buildRadarView(bullish, nowMs);
   const lastSignalAt = view.latestScanAt;
-  const isLive = lastSignalAt !== null && Date.now() - Date.parse(lastSignalAt) < LIVE_WINDOW_MS;
+  const isLive = lastSignalAt !== null && nowMs - Date.parse(lastSignalAt) < LIVE_WINDOW_MS;
 
   return (
     <>
@@ -60,7 +62,7 @@ export default async function Page() {
         <TabShell
           openCount={openPositions.length}
           radar={<RadarTable view={view} />}
-          positions={<OpenPositions positions={openPositions} latestPrices={latestPrices} />}
+          positions={<OpenPositions positions={openPositions} latestPrices={live.prices} />}
           history={<HistoryStats signals={closedSignals} />}
         />
       </main>

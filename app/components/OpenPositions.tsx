@@ -18,6 +18,10 @@ export default function OpenPositions({ positions, latestPrices }: Props) {
     );
   }
 
+  // latestPrices berisi harga LIVE Indodax. Kalau kosong, Indodax gagal dijawab:
+  // tampilkan "-" dan beri tahu, jangan pura-pura punya angka.
+  const priceUnavailable = latestPrices.size === 0;
+
   const rows = positions.map((p) => {
     const current = latestPrices.get(p.symbol) ?? null;
     const change = current !== null ? distancePct(p.entry_price, current) : null;
@@ -31,6 +35,11 @@ export default function OpenPositions({ positions, latestPrices }: Props) {
 
   return (
     <div className="stack stagger">
+      {priceUnavailable && (
+        <p className="section-note" role="status">
+          Harga live Indodax belum bisa diambil. Muat ulang beberapa saat lagi.
+        </p>
+      )}
       <dl className="summary">
         <div>
           <dt>Posisi terbuka</dt>
