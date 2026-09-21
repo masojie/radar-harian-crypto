@@ -1,102 +1,179 @@
-import type { BullishScanRow } from "@/lib/supabase-public";
-import { formatIDR, timeAgo, rsiZone } from "@/lib/format-dashboard";
+import type { CoinTrack, RadarView } from "@/lib/radar-view";
+import {
+  distancePct,
+  formatIDR,
+  formatPct,
+  formatRsi,
+  formatSpan,
+  pctTone,
+  rsiZone,
+  rsiZoneLabel,
+  timeAgo,
+} from "@/lib/format-dashboard";
+import RsiGauge from "./RsiGauge";
+import Sparkline from "./Sparkline";
 
-function RsiCell({ rsi }: { rsi: number }) {
-  const zone = rsiZone(rsi);
-  const color = zone === "deep" ? "var(--up)" : zone === "oversold" ? "var(--warn)" : "var(--ink-dim)";
-  const fillPct = Math.min(100, (rsi / 100) * 100);
+function detectionLabel(track: CoinTrack): string {
+  if (track.count <= 1) return "Terdeteksi 1x";
+  const span = Date.parse(track.lastSeenAt) - Date.parse(track.firstSeenAt);
+  return `${track.count}x dalam ${formatSpan(span)}`;
+}
+
+function Hero({ track }: { track: CoinTrack }) {
+  const { latest } = track;
+  const zone = rsiZone(latest.rsi);
+
+  const levels = [
+    { name: "TP1", price: latest.tp1_price, touches: latest.tp1_touches },
+    { name: "TP2", price: latest.tp2_price, touches: latest.tp2_touches },
+  ].filter(
+    (l): l is { name: string; price: number; touches: number | null } => l.price !== null
+  );
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <span className="mono" style={{ color, fontWeight: 600, minWidth: 34 }}>
-        {rsi.toFixed(1)}
-      </span>
-      <div
-        style={{
-          width: 40,
-          height: 3,
-          background: "var(--line)",
-          borderRadius: 2,
-          overflow: "hidden",
-        }}
-      >
-        <div style={{ width: `${fillPct}%`, height: "100%", background: color }} />
+    <article className="hero" aria-labelledby="hero-symbol">
+      <span className="hero-rings" aria-hidden="true" />
+
+      <div className="hero-top">
+        <p className="hero-kicker">RSI terendah di scan terakhir</p>
+        <span className={`chip chip-${zone}`}>{rsiZoneLabel(zone)}</span>
       </div>
-    </div>
+
+      <div className="hero-main">
+        <h2 id="hero-symbol" className="hero-symbol">
+          {track.symbol}
+          <span className="hero-pair">/IDR</span>
+        </h2>
+        <p className={`hero-rsi num zone-${zone}`}>
+          <span className="sr-only">RSI </span>
+          {formatRsi(latest.rsi)}
+        </p>
+      </div>
+
+      <RsiGauge rsi={latest.rsi} />
+
+      <dl className="facts">
+        <div>
+          <dt>Harga</dt>
+          <dd className="num">Rp{formatIDR(latest.price)}</dd>
+        </div>
+        <div>
+          <dt>Terdeteksi</dt>
+          <dd>{detectionLabel(track)}</dd>
+        </div>
+        <div>
+          <dt>Sejak pertama</dt>
+          <dd className={`num tone-${pctTone(track.priceChangePct)}`}>
+            {track.count > 1 ? formatPct(track.priceChangePct) : "Baru muncul"}
+          </dd>
+        </div>
+      </dl>
+
+      {track.rsiSeries.length > 1 && (
+        <div className="hero-trend">
+          <p className="trend-label">Jejak RSI</p>
+          <Sparkline
+            stretch
+            height={44}
+            width={320}
+            values={track.rsiSeries}
+            label={`Jejak RSI ${track.symbol}`}
+            className={`zone-${zone}`}
+          />
+        </div>
+      )}
+
+      {levels.length > 0 && (
+        <div className="levels">
+          <h3 className="levels-title">Level resisten mingguan</h3>
+          <ul className="levels-list">
+            {levels.map((l) => (
+              <li key={l.name}>
+                <span className="level-name">{l.name}</span>
+                <span className="level-main">
+                  <span className="num">Rp{formatIDR(l.price)}</span>
+                  {l.touches !== null && <span className="level-touch">{l.touches}x disentuh</span>}
+                </span>
+                <span className="level-dist num">{formatPct(distancePct(latest.price, l.price))}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </article>
   );
 }
 
-export default function RadarTable({ rows }: { rows: BullishScanRow[] }) {
-  if (rows.length === 0) {
+function TrackRow({ track }: { track: CoinTrack }) {
+  const zone = rsiZone(track.latest.rsi);
+
+  return (
+    <li className={track.active ? "track" : "track track-past"}>
+      <div className="coin">
+        <p className="coin-symbol">
+          {track.active && (
+            <>
+              <span className="live-dot" aria-hidden="true" />
+              <span className="sr-only">Aktif di scan terakhir. </span>
+            </>
+          )}
+          {track.symbol}
+        </p>
+        <p className="coin-meta">
+          {track.active
+            ? detectionLabel(track)
+            : `Terakhir ${timeAgo(track.lastSeenAt)}, ${track.count}x`}
+        </p>
+      </div>
+
+      <div className="track-trend">
+        <Sparkline
+          values={track.rsiSeries}
+          label={`Jejak RSI ${track.symbol}`}
+          className={`zone-${zone}`}
+        />
+      </div>
+
+      <div className="rsi-cell">
+        <p className={`rsi-value num zone-${zone}`}>{formatRsi(track.latest.rsi)}</p>
+        <p className="rsi-price num">Rp{formatIDR(track.latest.price)}</p>
+      </div>
+    </li>
+  );
+}
+
+export default function RadarTable({ view }: { view: RadarView }) {
+  if (view.tracks.length === 0) {
     return (
-      <div style={{ color: "var(--ink-dim)", padding: "40px 0", textAlign: "center", fontSize: 13.5 }}>
-        Belum ada sinyal masuk. Scan berikutnya jalan tiap 15 menit.
+      <div className="empty">
+        <span className="empty-rings" aria-hidden="true" />
+        <h2>Belum ada sinyal masuk</h2>
+        <p>Scan berjalan otomatis. Coin yang RSI-nya turun ke zona jenuh jual akan muncul di sini.</p>
       </div>
     );
   }
 
-  // Kelompokkan per waktu scan biar keliatan mana yang datang bareng
-  const latestScanTime = rows[0].scanned_at;
+  const [lead, ...rest] = view.tracks;
 
   return (
-    <div className="scroll-x">
-      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
-        <thead>
-          <tr style={{ borderBottom: "1px solid var(--line)" }}>
-            {["Rank", "Coin", "Harga", "RSI", "TP1", "TP2", "Kapan"].map((h) => (
-              <th
-                key={h}
-                style={{
-                  textAlign: h === "Coin" ? "left" : "right",
-                  padding: "8px 12px",
-                  fontSize: 11.5,
-                  color: "var(--ink-faint)",
-                  fontWeight: 500,
-                }}
-              >
-                {h}
-              </th>
+    <div className="stack stagger">
+      <Hero track={lead} />
+
+      {rest.length > 0 && (
+        <section aria-labelledby="track-title">
+          <h2 id="track-title" className="section-title">
+            Coin lain yang terpantau
+          </h2>
+          <p className="section-note">
+            Dikelompokkan per coin dari {view.sampleCount} pembacaan scan terakhir.
+          </p>
+          <ul className="tracks">
+            {rest.map((track) => (
+              <TrackRow key={track.symbol} track={track} />
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            const isLatestBatch = row.scanned_at === latestScanTime;
-            return (
-              <tr
-                key={row.id}
-                style={{
-                  borderBottom: "1px solid var(--line-soft)",
-                  background: isLatestBatch ? "var(--up-bg)" : "transparent",
-                }}
-              >
-                <td className="mono" style={{ padding: "10px 12px", color: "var(--ink-faint)", textAlign: "right" }}>
-                  {row.rank_in_scan}
-                </td>
-                <td style={{ padding: "10px 12px", fontWeight: 600 }}>{row.symbol}</td>
-                <td className="mono" style={{ padding: "10px 12px", textAlign: "right" }}>
-                  Rp{formatIDR(row.price)}
-                </td>
-                <td style={{ padding: "10px 12px" }}>
-                  <RsiCell rsi={row.rsi} />
-                </td>
-                <td className="mono" style={{ padding: "10px 12px", textAlign: "right", color: "var(--ink-dim)" }}>
-                  {row.tp1_price ? `Rp${formatIDR(row.tp1_price)}` : "—"}
-                </td>
-                <td className="mono" style={{ padding: "10px 12px", textAlign: "right", color: "var(--ink-dim)" }}>
-                  {row.tp2_price ? `Rp${formatIDR(row.tp2_price)}` : "—"}
-                </td>
-                <td
-                  className="mono"
-                  style={{ padding: "10px 12px", textAlign: "right", color: "var(--ink-faint)", fontSize: 12.5 }}
-                >
-                  {timeAgo(row.scanned_at)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+          </ul>
+        </section>
+      )}
     </div>
   );
 }
