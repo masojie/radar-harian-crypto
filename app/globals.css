@@ -68,12 +68,12 @@
     --ink-dim: #52564b;
     --ink-faint: #6b6f63;
 
-    --up: #3f7d0e;
-    --down: #c2382a;
-    --warn: #8a6100;
-    --up-bg: rgba(63, 125, 14, 0.1);
-    --down-bg: rgba(194, 56, 42, 0.09);
-    --warn-bg: rgba(138, 97, 0, 0.1);
+    --up: #37700a;
+    --down: #b13024;
+    --warn: #7d5700;
+    --up-bg: rgba(55, 112, 10, 0.1);
+    --down-bg: rgba(177, 48, 36, 0.09);
+    --warn-bg: rgba(125, 87, 0, 0.1);
 
     --focus: #2f6b00;
     --ring: rgba(63, 125, 14, 0.1);
@@ -517,17 +517,20 @@ button {
 
 .hero-main {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
+  gap: 8px 16px;
   margin-top: 20px;
 }
 
 .hero-symbol {
+  min-width: 0;
   font-size: clamp(28px, 8vw, 36px);
   font-weight: 600;
   letter-spacing: -0.035em;
   line-height: 1.05;
+  overflow-wrap: anywhere;
 }
 
 .hero-pair {
@@ -539,6 +542,7 @@ button {
 }
 
 .hero-rsi {
+  margin-left: auto;
   font-size: clamp(46px, 14vw, 64px);
   font-weight: 500;
   letter-spacing: -0.06em;

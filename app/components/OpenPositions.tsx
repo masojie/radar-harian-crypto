@@ -54,6 +54,9 @@ export default function OpenPositions({ positions, latestPrices }: Props) {
         {rows.map(({ p, current, change }) => {
           const toTp1 = current !== null ? distancePct(current, p.tp1_price) : null;
           const toSl = current !== null ? distancePct(current, p.sl_wide_price) : null;
+          // Harga bisa sudah melewati level sebelum pengecek hasil menutup posisinya
+          const pastTp1 = current !== null && current >= p.tp1_price;
+          const pastSl = current !== null && current <= p.sl_wide_price;
 
           return (
             <article key={p.id} className="pos">
@@ -85,11 +88,15 @@ export default function OpenPositions({ positions, latestPrices }: Props) {
                 </div>
                 <div>
                   <dt>Ke TP1</dt>
-                  <dd className="num tone-up">{toTp1 !== null ? formatPct(toTp1) : "-"}</dd>
+                  <dd className="num tone-up">
+                    {pastTp1 ? "Tercapai" : toTp1 !== null ? formatPct(toTp1) : "-"}
+                  </dd>
                 </div>
                 <div>
                   <dt>Ke SL</dt>
-                  <dd className="num tone-down">{toSl !== null ? formatPct(toSl) : "-"}</dd>
+                  <dd className="num tone-down">
+                    {pastSl ? "Tertembus" : toSl !== null ? formatPct(toSl) : "-"}
+                  </dd>
                 </div>
               </dl>
             </article>

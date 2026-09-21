@@ -13,8 +13,8 @@ import {
 import RsiGauge from "./RsiGauge";
 import Sparkline from "./Sparkline";
 
-function detectionLabel(track: CoinTrack): string {
-  if (track.count <= 1) return "Terdeteksi 1x";
+function detectionCount(track: CoinTrack): string {
+  if (track.count <= 1) return "1x";
   const span = Date.parse(track.lastSeenAt) - Date.parse(track.firstSeenAt);
   return `${track.count}x dalam ${formatSpan(span)}`;
 }
@@ -59,7 +59,7 @@ function Hero({ track }: { track: CoinTrack }) {
         </div>
         <div>
           <dt>Terdeteksi</dt>
-          <dd>{detectionLabel(track)}</dd>
+          <dd>{detectionCount(track)}</dd>
         </div>
         <div>
           <dt>Sejak pertama</dt>
@@ -121,7 +121,7 @@ function TrackRow({ track }: { track: CoinTrack }) {
         </p>
         <p className="coin-meta">
           {track.active
-            ? detectionLabel(track)
+            ? `Terdeteksi ${detectionCount(track)}`
             : `Terakhir ${timeAgo(track.lastSeenAt)}, ${track.count}x`}
         </p>
       </div>
