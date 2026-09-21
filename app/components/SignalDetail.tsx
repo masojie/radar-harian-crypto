@@ -32,6 +32,37 @@ function duration(s: SignalOutcomeRow): string {
   return `${days}h ${hours % 24}j`;
 }
 
+/* --- Inline SVG icons matching the dark panel aesthetic --- */
+
+function IconLevels() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="section-icon" aria-hidden="true">
+      <rect x="1" y="12" width="3" height="4" rx="0.5" fill="currentColor" opacity="0.3" />
+      <rect x="6.5" y="7" width="3" height="9" rx="0.5" fill="currentColor" opacity="0.55" />
+      <rect x="12" y="3" width="3" height="13" rx="0.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function IconOutcome() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="section-icon" aria-hidden="true">
+      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="8" cy="8" r="2.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function IconRange() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="section-icon" aria-hidden="true">
+      <rect x="0.5" y="0.5" width="15" height="15" rx="2" stroke="currentColor" strokeWidth="1" />
+      <rect x="3" y="9" width="4" height="6" rx="0.8" fill="currentColor" opacity="0.35" />
+      <rect x="9" y="4" width="4" height="11" rx="0.8" fill="currentColor" />
+    </svg>
+  );
+}
+
 interface LevelRow {
   label: string;
   price: number;
@@ -53,7 +84,9 @@ function LevelBar({ row, entry, maxPrice }: { row: LevelRow; entry: number; maxP
       <div className="level-bar-track">
         <div className={`level-bar-fill level-fill-${row.tone}`} style={{ width: `${fillPct}%` }} />
       </div>
-      <span className="level-status">{row.hit ? "\u2705" : "\u274c"}</span>
+      <span className={`level-status level-status-${row.tone} ${row.hit ? "" : "level-status-miss"}`}>
+        {row.hit ? "HIT" : "\u2014"}
+      </span>
     </div>
   );
 }
@@ -121,7 +154,7 @@ export default function SignalDetail({
         </div>
 
         <div className="modal-section">
-          <h3 className="modal-section-title">\ud83d\udcc8 Level Harga</h3>
+          <h3 className="modal-section-title"><IconLevels /> Level Harga</h3>
           <div className="modal-entry-line">
             <span className="entry-label">Entry</span>
             <span className="entry-value num">Rp{formatIDR(entry)}</span>
@@ -132,7 +165,7 @@ export default function SignalDetail({
         </div>
 
         <div className="modal-section">
-          <h3 className="modal-section-title">\ud83c\udfaf Hasil</h3>
+          <h3 className="modal-section-title"><IconOutcome /> Hasil</h3>
           <div className="modal-outcomes">
             <div className="modal-outcome-card">
               <span className="modal-outcome-label">SL Ketat (-3%)</span>
@@ -152,7 +185,7 @@ export default function SignalDetail({
         </div>
 
         <div className="modal-section">
-          <h3 className="modal-section-title">\ud83d\udcca Range Harga</h3>
+          <h3 className="modal-section-title"><IconRange /> Range Harga</h3>
           <div className="modal-range-labels">
             <span className="num">Rp{formatIDR(low)}</span>
             <span className="num">Rp{formatIDR(high)}</span>
