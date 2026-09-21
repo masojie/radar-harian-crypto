@@ -2,7 +2,7 @@
  * Harga live spot Indodax untuk tab Posisi Aktif.
  *
  * Sebelumnya harga diambil dari baris terakhir bullish_scans. Tabel itu
- * hanya terisi saat ada coin RSI < 35, jadi harga sebuah coin bisa basi
+ * hanya terisi saat ada coin RSI < 40, jadi harga sebuah coin bisa basi
  * belasan jam dan angka "berjalan" di dashboard jadi bohong. Endpoint ini
  * publik, gratis, dan dipakai juga oleh bot (lib/indodax.ts).
  *
