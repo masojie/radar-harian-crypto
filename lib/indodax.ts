@@ -751,6 +751,8 @@ export interface ScanResult {
   price: number;
   rsi: number;
   volumeIdr: number;
+  buyPrice?: number;
+  sellPrice?: number;
 }
 
 // Minimal volume 24 jam supaya coin ikut di-scan - di bawah ini
@@ -839,6 +841,8 @@ export async function scanBullishCoins(): Promise<ScanResult[]> {
         price: candles[candles.length - 1].close,
         rsi,
         volumeIdr: coin.volumeIdr,
+        buyPrice: coin.buyPrice,
+        sellPrice: coin.sellPrice,
         isBullish,
       };
     })
@@ -852,6 +856,8 @@ export async function scanBullishCoins(): Promise<ScanResult[]> {
         price: r.value.price,
         rsi: r.value.rsi,
         volumeIdr: r.value.volumeIdr,
+        buyPrice: r.value.buyPrice,
+        sellPrice: r.value.sellPrice,
       });
     }
   }
