@@ -1,74 +1,115 @@
-// Pelacak hasil sinyal BUY: tiap sinyal RSI<40 dibuka sebagai "posisi",
+// Pelacak hasil sinyal BUY: posisi dibuka lewat try_insert_signal() di
+// Postgres (satu gate untuk semua proteksi - lihat openSignalViaGate),
 // lalu dicek berkala pakai candle Indodax asli - kena TP atau SL duluan.
 //
 // Dua SL dilacak sekaligus (ketat -3% dan longgar -5%) supaya backtest
 // bisa membandingkan keduanya dari sinyal yang SAMA, tanpa scan ulang.
 //
-// TP 5/10/15% sama dengan calculateSpotLevels() di lib/indodax.ts.
+// TP1/TP2 BISA berbasis resistance historis (bukan selalu 5%/10% tetap)
+// - keputusan levelnya ada di try_insert_signal, bukan di file ini lagi.
+// simulate() karena itu WAJIB pakai level yang benar-benar tersimpan di
+// baris signal_outcomes, bukan hitung ulang dari persentase tetap -
+// kalau tidak, hasil TP/SL yang disimulasikan bisa beda dari yang
+// sebenarnya disiarkan ke Telegram.
 
 import { getIntradayCandles, type Candle } from "@/lib/indodax";
 import { supabaseAdmin } from "@/lib/supabase";
 
+// Dipakai try_insert_signal sebagai FALLBACK kalau resistance tidak
+// tersedia/tidak masuk akal jaraknya - lihat definisi fungsi di Supabase.
+// Timeout 24 jam juga sudah di-hardcode di sana (now() + interval
+// '24 hours'), bukan dari TIMEOUT_HOURS di bawah ini lagi - kalau mau
+// ubah durasi timeout, ubah di DUA tempat (di sini untuk dokumentasi,
+// dan di fungsi try_insert_signal untuk yang benar-benar berlaku).
 export const SL_TIGHT_PCT = 0.03;
 export const SL_WIDE_PCT = 0.05;
 export const TP1_PCT = 0.05;
 export const TP2_PCT = 0.1;
 export const TP3_PCT = 0.15;
 export const TIMEOUT_HOURS = 24;
-// Sinyal baru untuk koin yang sama dianggap KEJADIAN YANG SAMA selama
-// posisi lamanya masih open. Tanpa ini, 1 koin yang terus RSI<40
-// tercatat puluhan kali dan menggelembungkan jumlah sinyal.
 
 export type Outcome = "tp1" | "tp2" | "tp3" | "sl" | "timeout";
 
-export interface OpenSignalInput {
-  signalId: number;
+export interface OpenSignalGateInput {
   symbol: string;
-  signaledAt: string;
-  entryPrice: number;
   rsi: number;
+  price: number;
+  rank?: number;
+  buyPrice?: number;
+  sellPrice?: number;
+  tp1Res?: number;
+  tp1Touches?: number;
+  tp2Res?: number;
+  tp2Touches?: number;
+}
+
+export interface GateResult {
+  broadcasted: boolean;
+  alasan?: string;
+  tp1?: number;
+  tp2?: number;
+  tp3?: number;
+  slTight?: number;
+  slWide?: number;
 }
 
 /**
- * Buka posisi baru untuk sinyal, KECUALI koin itu masih punya posisi open.
- * Mengembalikan true kalau posisi baru benar-benar dibuka.
+ * Buka posisi lewat try_insert_signal() di Postgres - SATU jalur untuk
+ * insert bullish_scans + signal_outcomes sekaligus, dengan proteksi:
+ * bad tick (deviasi median 12 scan terakhir), spread lebar/negatif,
+ * blacklist symbol, posisi masih terbuka, cooldown 60 menit setelah
+ * close, dan RSI sama belum update (dedup). TP1/TP2 dipilih di sana:
+ * resistance kalau jaraknya masuk akal (1.02x-1.20x harga, >=3x
+ * disentuh), fallback ke persentase tetap kalau tidak.
+ *
+ * Menggantikan openSignalIfNew() lama yang insert mentah ke
+ * signal_outcomes dengan TP/SL fixed 5/10/15%, TANPA proteksi apa pun
+ * di atas - itu sebabnya satu coin bisa buka-tutup posisi tiap 5-10
+ * menit (tidak ada cooldown), dan TP yang dilacak beda dari TP yang
+ * disiarkan ke Telegram (dua sumber independen sebelumnya, sekarang
+ * satu).
  */
-export async function openSignalIfNew(input: OpenSignalInput): Promise<boolean> {
-  const { data: existing, error: checkError } = await supabaseAdmin
-    .from("signal_outcomes")
-    .select("id")
-    .eq("symbol", input.symbol)
-    .eq("status", "open")
-    .limit(1);
-
-  if (checkError) {
-    throw new Error(`Gagal cek posisi open ${input.symbol}: ${checkError.message}`);
-  }
-  if (existing && existing.length > 0) return false;
-
-  const e = input.entryPrice;
-  const expires = new Date(
-    new Date(input.signaledAt).getTime() + TIMEOUT_HOURS * 3600 * 1000
-  ).toISOString();
-
-  const { error } = await supabaseAdmin.from("signal_outcomes").insert({
-    signal_id: input.signalId,
-    symbol: input.symbol,
-    signaled_at: input.signaledAt,
-    entry_price: e,
-    rsi_at_signal: input.rsi,
-    sl_tight_price: e * (1 - SL_TIGHT_PCT),
-    sl_wide_price: e * (1 - SL_WIDE_PCT),
-    tp1_price: e * (1 + TP1_PCT),
-    tp2_price: e * (1 + TP2_PCT),
-    tp3_price: e * (1 + TP3_PCT),
-    expires_at: expires,
+export async function openSignalViaGate(
+  input: OpenSignalGateInput
+): Promise<GateResult> {
+  const { data, error } = await supabaseAdmin.rpc("try_insert_signal", {
+    p_symbol: input.symbol,
+    p_rsi: input.rsi,
+    p_price: input.price,
+    p_rank: input.rank ?? null,
+    p_buy_price: input.buyPrice ?? null,
+    p_sell_price: input.sellPrice ?? null,
+    p_tp1_res: input.tp1Res ?? null,
+    p_tp1_touches: input.tp1Touches ?? null,
+    p_tp2_res: input.tp2Res ?? null,
+    p_tp2_touches: input.tp2Touches ?? null,
   });
 
   if (error) {
-    throw new Error(`Gagal buka posisi ${input.symbol}: ${error.message}`);
+    throw new Error(
+      `Gagal panggil try_insert_signal untuk ${input.symbol}: ${error.message}`
+    );
   }
-  return true;
+
+  const r = (data ?? {}) as {
+    should_broadcast?: boolean;
+    alasan?: string;
+    tp1?: number;
+    tp2?: number;
+    tp3?: number;
+    sl_tight?: number;
+    sl_wide?: number;
+  };
+
+  return {
+    broadcasted: r.should_broadcast === true,
+    alasan: r.alasan,
+    tp1: r.tp1,
+    tp2: r.tp2,
+    tp3: r.tp3,
+    slTight: r.sl_tight,
+    slWide: r.sl_wide,
+  };
 }
 
 interface SimResult {
@@ -83,23 +124,31 @@ interface SimResult {
   allClosed: boolean;
 }
 
+export interface SimLevels {
+  tp1: number;
+  tp2: number;
+  tp3: number;
+  slTight: number;
+  slWide: number;
+}
+
 /**
- * Simulasi berurutan candle demi candle. Kalau dalam SATU candle
- * high menyentuh TP dan low menyentuh SL sekaligus, urutan tidak bisa
- * diketahui - diasumsikan SL kena DULU (skenario terburuk) supaya
- * hasil backtest tidak terlalu optimis.
+ * Simulasi berurutan candle demi candle terhadap level TP/SL yang
+ * SUDAH TERSIMPAN di baris signal_outcomes (bisa resistance, bisa
+ * fixed % - keputusan itu sudah final saat posisi dibuka lewat
+ * openSignalViaGate). Kalau dalam SATU candle high menyentuh TP dan
+ * low menyentuh SL sekaligus, urutan tidak bisa diketahui - diasumsikan
+ * SL kena DULU (skenario terburuk) supaya hasil backtest tidak terlalu
+ * optimis.
  */
 export function simulate(
   candles: Candle[],
   entry: number,
+  levels: SimLevels,
   expiresAtSec: number,
   nowSec: number
 ): SimResult {
-  const slT = entry * (1 - SL_TIGHT_PCT);
-  const slW = entry * (1 - SL_WIDE_PCT);
-  const tp1 = entry * (1 + TP1_PCT);
-  const tp2 = entry * (1 + TP2_PCT);
-  const tp3 = entry * (1 + TP3_PCT);
+  const { tp1, tp2, tp3, slTight: slT, slWide: slW } = levels;
 
   let outT: Outcome | null = null;
   let outW: Outcome | null = null;
@@ -129,25 +178,22 @@ export function simulate(
 
   const expired = nowSec >= expiresAtSec;
   const lastClose = candles.length ? candles[candles.length - 1].close : entry;
-
-  const pnl = (o: Outcome | null): number => {
-    if (o === "tp1") return TP1_PCT * 100;
-    if (o === "tp2") return TP2_PCT * 100;
-    if (o === "tp3") return TP3_PCT * 100;
-    return NaN;
-  };
+  const pnlOf = (target: number): number => ((target - entry) / entry) * 100;
 
   const finalT: Outcome | null = outT ?? (expired ? "timeout" : null);
   const finalW: Outcome | null = outW ?? (expired ? "timeout" : null);
 
-  const pnlT =
-    finalT === "sl" ? -SL_TIGHT_PCT * 100
-    : finalT === "timeout" ? ((lastClose - entry) / entry) * 100
-    : pnl(finalT);
-  const pnlW =
-    finalW === "sl" ? -SL_WIDE_PCT * 100
-    : finalW === "timeout" ? ((lastClose - entry) / entry) * 100
-    : pnl(finalW);
+  const pnlFor = (o: Outcome | null, slValue: number): number => {
+    if (o === "sl") return pnlOf(slValue);
+    if (o === "tp1") return pnlOf(tp1);
+    if (o === "tp2") return pnlOf(tp2);
+    if (o === "tp3") return pnlOf(tp3);
+    if (o === "timeout") return pnlOf(lastClose);
+    return NaN;
+  };
+
+  const pnlT = pnlFor(finalT, slT);
+  const pnlW = pnlFor(finalW, slW);
 
   return {
     outcomeTight: (finalT ?? "timeout") as Outcome,
@@ -163,8 +209,9 @@ export function simulate(
 }
 
 /**
- * Cek semua posisi open: tarik candle 5 menit sejak sinyal, simulasikan,
- * tulis hasilnya. Mengembalikan ringkasan untuk response endpoint.
+ * Cek semua posisi open: tarik candle 5 menit sejak sinyal, simulasikan
+ * terhadap TP/SL yang tersimpan di baris itu sendiri, tulis hasilnya.
+ * Mengembalikan ringkasan untuk response endpoint.
  */
 export async function checkOpenOutcomes(): Promise<{
   checked: number;
@@ -201,7 +248,19 @@ export async function checkOpenOutcomes(): Promise<{
         continue;
       }
 
-      const r = simulate(candles, Number(row.entry_price), expiresSec, nowSec);
+      const r = simulate(
+        candles,
+        Number(row.entry_price),
+        {
+          tp1: Number(row.tp1_price),
+          tp2: Number(row.tp2_price),
+          tp3: Number(row.tp3_price),
+          slTight: Number(row.sl_tight_price),
+          slWide: Number(row.sl_wide_price),
+        },
+        expiresSec,
+        nowSec
+      );
 
       const update: Record<string, unknown> = {
         max_price: r.maxPrice,
@@ -211,9 +270,6 @@ export async function checkOpenOutcomes(): Promise<{
 
       if (r.allClosed) {
         const closeSec = Math.max(r.closedAtTight ?? 0, r.closedAtWide ?? 0) || nowSec;
-        // status hanya penanda posisi sudah selesai. Hasil yang dipakai
-        // backtest ada di outcome_tight dan outcome_wide (dua SL berbeda
-        // bisa menghasilkan akhir berbeda dari sinyal yang sama).
         update.status =
           r.outcomeTight === "sl" ? "sl_tight"
           : r.outcomeWide === "sl" ? "sl_wide"
