@@ -2,8 +2,7 @@
 import { NextResponse } from "next/server";
 import { scanBullishCoins, scanNearestToThreshold, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels } from "@/lib/indodax";
 import { sendTelegramMessage } from "@/lib/telegram";
-import { saveBullishScanResults, type BullishScanRow } from "@/lib/supabase";
-import { openSignalIfNew } from "@/lib/outcome";
+import { openSignalViaGate } from "@/lib/outcome";
 
 function formatRupiah(n: number): string {
   return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
@@ -60,6 +59,19 @@ async function sendHeartbeat(now: Date): Promise<boolean> {
   return true;
 }
 
+interface ScanCandidate {
+  symbol: string;
+  rsi: number;
+  price: number;
+  rank: number;
+  buyPrice?: number;
+  sellPrice?: number;
+  tp1Res?: number;
+  tp1Touches?: number;
+  tp2Res?: number;
+  tp2Touches?: number;
+}
+
 /**
  * Endpoint ini dipanggil oleh SCHEDULER EKSTERNAL (bukan Vercel Cron -
  * plan Hobby Vercel cuma bisa cron 1x sehari, jadi kita pakai layanan
@@ -75,12 +87,14 @@ async function sendHeartbeat(now: Date): Promise<boolean> {
  * SUDAH TERBUKTI jadi titik pasar berbalik, dibanding sekadar
  * persentase tetap.
  *
- * Hasil scan JUGA disimpan ke Supabase (tabel bullish_scans) supaya
- * ada histori kapan saja momentum bullish terdeteksi sepanjang hari -
- * berguna untuk analisis pola nanti (misal: coin apa yang paling
- * sering muncul, jam berapa biasanya bullish terdeteksi). Penyimpanan
- * ini TIDAK BOLEH menghalangi notifikasi Telegram: kalau Supabase
- * bermasalah, pesan tetap harus terkirim seperti biasa.
+ * Hasil scan JUGA disimpan ke Supabase lewat try_insert_signal() -
+ * SATU gate untuk insert bullish_scans + signal_outcomes sekaligus,
+ * dengan proteksi bad tick, spread, blacklist, cooldown 60 menit, dan
+ * dedup RSI basi (lihat lib/outcome.ts:openSignalViaGate). Tiap coin
+ * diproses independen lewat gate ini - satu coin gagal/ditolak tidak
+ * menggagalkan yang lain. Penyimpanan ini TIDAK BOLEH menghalangi
+ * notifikasi Telegram: kalau Supabase bermasalah, pesan tetap harus
+ * terkirim seperti biasa.
  *
  * Pesan Telegram juga menyertakan LINK ke dashboard web (Tab Radar),
  * supaya orang yang lihat notif bisa langsung cek visualnya dengan
@@ -130,31 +144,30 @@ export async function GET(request: Request) {
       });
     }
 
-    const lines: string[] = ["🚨 *SCAN OTOMATIS - Momentum Bullish Terdeteksi*\n"];
+    const lines: string[] = ["\ud83d\udea8 *SCAN OTOMATIS - Momentum Bullish Terdeteksi*\n"];
 
     const top5 = results.slice(0, 5);
     const RESISTANCE_DETAIL_COUNT = 3; // batasi supaya tidak timeout
 
-    // Dikumpulkan paralel dengan proses kirim pesan, supaya nanti bisa
-    // disimpan ke Supabase dengan data resistance yang sama persis
-    // dengan yang dikirim ke Telegram (satu sumber kebenaran).
-    const rowsToSave: BullishScanRow[] = [];
+    // Dikumpulkan buat dipakai ulang di gate try_insert_signal, supaya
+    // TP/SL yang akhirnya tersimpan konsisten dengan resistance yang
+    // sama persis dengan yang dikirim ke Telegram (satu sumber
+    // kebenaran, keputusan akhirnya ada di dalam try_insert_signal).
+    const candidates: ScanCandidate[] = [];
 
     for (let i = 0; i < top5.length; i++) {
       const r = top5[i];
       lines.push(
-        `${i + 1}. 🟢 ${r.symbol}IDR - RSI ${r.rsi.toFixed(1)} - Rp ${formatRupiah(r.price)}`
+        `${i + 1}. \ud83d\udfe2 ${r.symbol}IDR - RSI ${r.rsi.toFixed(1)} - Rp ${formatRupiah(r.price)}`
       );
 
-      const row: BullishScanRow = {
+      const candidate: ScanCandidate = {
         symbol: r.symbol,
         rsi: r.rsi,
         price: r.price,
-        rank_in_scan: i + 1,
-        tp1_price: null,
-        tp1_touches: null,
-        tp2_price: null,
-        tp2_touches: null,
+        rank: i + 1,
+        buyPrice: r.buyPrice,
+        sellPrice: r.sellPrice,
       };
 
       // Tambahkan TP1/TP2 berbasis resistance untuk 3 coin teratas saja
@@ -169,15 +182,15 @@ export async function GET(request: Request) {
             lines.push(
               `   TP1 (resistance terdekat): Rp ${formatRupiah(nearestResistances[0].price)} (${nearestResistances[0].touches}x disentuh)`
             );
-            row.tp1_price = nearestResistances[0].price;
-            row.tp1_touches = nearestResistances[0].touches;
+            candidate.tp1Res = nearestResistances[0].price;
+            candidate.tp1Touches = nearestResistances[0].touches;
           }
           if (nearestResistances.length >= 2) {
             lines.push(
               `   TP2 (resistance berikutnya): Rp ${formatRupiah(nearestResistances[1].price)} (${nearestResistances[1].touches}x disentuh)`
             );
-            row.tp2_price = nearestResistances[1].price;
-            row.tp2_touches = nearestResistances[1].touches;
+            candidate.tp2Res = nearestResistances[1].price;
+            candidate.tp2Touches = nearestResistances[1].touches;
           }
         } catch (levelError) {
           // Kalau deteksi level gagal untuk satu coin (misal data
@@ -187,7 +200,7 @@ export async function GET(request: Request) {
         }
       }
 
-      rowsToSave.push(row);
+      candidates.push(candidate);
     }
 
     lines.push("");
@@ -204,44 +217,35 @@ export async function GET(request: Request) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL;
     if (appUrl) {
       lines.push("");
-      lines.push(`⚡ *RadarView* — [pantau live di sini](${appUrl})`);
+      lines.push(`\u26a1 *RadarView* \u2014 [pantau live di sini](${appUrl})`);
     }
 
     // Telegram dikirim DULU - ini fungsi utama endpoint ini dan tidak
     // boleh terganggu oleh apapun yang terjadi di langkah penyimpanan.
     await sendTelegramMessage(lines.join("\n"));
 
-    // Simpan ke Supabase SETELAH Telegram terkirim, dibungkus try-catch
-    // terpisah. Kegagalan di sini hanya dicatat di log dan dilaporkan
-    // lewat field savedToDatabase pada response - tidak pernah membuat
-    // endpoint ini gagal atau melempar error ke scheduler eksternal.
+    // Simpan ke Supabase SETELAH Telegram terkirim, lewat try_insert_signal
+    // per coin (satu gate untuk semua proteksi - lihat lib/outcome.ts).
+    // Tiap coin diproses independen dalam try-catch sendiri: satu coin
+    // gagal/ditolak gate tidak menggagalkan yang lain, dan kegagalan di
+    // sini tidak pernah membuat endpoint ini gagal atau melempar error
+    // ke scheduler eksternal.
     let savedToDatabase = 0;
     let positionsOpened = 0;
-    try {
-      const saved = await saveBullishScanResults(rowsToSave);
-      savedToDatabase = saved.length;
-
-      // Buka posisi outcome untuk tiap sinyal - HANYA kalau koin itu
-      // belum punya posisi open (satu kejadian = satu posisi). Gagal di
-      // sini tidak boleh membatalkan apa pun yang sudah terkirim.
-      for (const s of saved) {
-        try {
-          const opened = await openSignalIfNew({
-            signalId: s.id,
-            symbol: s.symbol,
-            signaledAt: s.scanned_at,
-            entryPrice: s.price,
-            rsi: s.rsi,
-          });
-          if (opened) positionsOpened++;
-        } catch (posError) {
-          console.error(`Gagal buka posisi outcome ${s.symbol}:`, posError);
+    for (const c of candidates) {
+      try {
+        const gate = await openSignalViaGate(c);
+        savedToDatabase++;
+        if (gate.broadcasted) {
+          positionsOpened++;
+        } else {
+          console.log(`Scan-notify: ${c.symbol} tidak dibuka posisi (${gate.alasan})`);
         }
+      } catch (dbError) {
+        const dbMessage =
+          dbError instanceof Error ? dbError.message : "Unknown database error";
+        console.error(`Scan-notify: gagal proses gate ${c.symbol} (Telegram tetap terkirim):`, dbMessage);
       }
-    } catch (dbError) {
-      const dbMessage =
-        dbError instanceof Error ? dbError.message : "Unknown database error";
-      console.error("Scan-notify: gagal simpan ke Supabase (Telegram tetap terkirim):", dbMessage);
     }
 
     return NextResponse.json({
