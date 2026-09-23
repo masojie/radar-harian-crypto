@@ -1,6 +1,6 @@
 // Redeploy trigger: refresh CRON_SECRET env var
 import { NextResponse } from "next/server";
-import { scanBullishCoins, scanNearestToThreshold, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels } from "@/lib/indodax";
+import { scanBullishCoins, scanNearestToThreshold, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels, findNearestSupportLevels } from "@/lib/indodax";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { openSignalViaGate } from "@/lib/outcome";
 
@@ -70,6 +70,8 @@ interface ScanCandidate {
   tp1Touches?: number;
   tp2Res?: number;
   tp2Touches?: number;
+  supportRes?: number;
+  supportTouches?: number;
 }
 
 /**
@@ -192,6 +194,17 @@ export async function GET(request: Request) {
             candidate.tp2Res = nearestResistances[1].price;
             candidate.tp2Touches = nearestResistances[1].touches;
           }
+
+          // Level support terdekat (di bawah harga) - acuan entry manual,
+          // dipakai levels yang sama, tidak nambah fetch data baru.
+          const nearestSupports = findNearestSupportLevels(levels, r.price, 1);
+          if (nearestSupports.length >= 1) {
+            lines.push(
+              `   Entry (support terdekat): Rp ${formatRupiah(nearestSupports[0].price)} (${nearestSupports[0].touches}x disentuh)`
+            );
+            candidate.supportRes = nearestSupports[0].price;
+            candidate.supportTouches = nearestSupports[0].touches;
+          }
         } catch (levelError) {
           // Kalau deteksi level gagal untuk satu coin (misal data
           // histori tidak cukup), lewati saja - jangan gagalkan
@@ -205,7 +218,7 @@ export async function GET(request: Request) {
 
     lines.push("");
     lines.push(
-      `_Ditemukan ${results.length} coin bullish. TP1/TP2 dihitung dari level resistance historis (candle mingguan, minimal 3x disentuh). Untuk detail lengkap salah satu, ketik /analisa <coin> di chat bot._`
+      `_Ditemukan ${results.length} coin bullish. TP1/TP2 dari level resistance historis, Entry dari level support historis (candle mingguan, minimal 3x disentuh). Untuk detail lengkap salah satu, ketik /analisa <coin> di chat bot._`
     );
     lines.push(
       "_Ini deteksi momentum yang SUDAH mulai bergerak, bukan prediksi masa depan._"
