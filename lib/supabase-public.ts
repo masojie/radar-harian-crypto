@@ -49,6 +49,8 @@ export interface BullishScanRow {
   tp1_touches: number | null;
   tp2_price: number | null;
   tp2_touches: number | null;
+  support_price: number | null;
+  support_touches: number | null;
   scanned_at: string;
 }
 
@@ -76,7 +78,7 @@ export interface SignalOutcomeRow {
   expires_at: string;
 }
 
-/** Sinyal bullish terbaru â jadi feed "Radar Live". */
+/** Sinyal bullish terbaru Ã¢ÂÂ jadi feed "Radar Live". */
 export async function getLatestBullishScans(limit = 30) {
   const { data, error } = await supabasePublic
     .from("bullish_scans")
@@ -88,7 +90,7 @@ export async function getLatestBullishScans(limit = 30) {
   return (data ?? []) as BullishScanRow[];
 }
 
-/** Posisi yang masih terbuka â belum kena TP/SL/timeout. */
+/** Posisi yang masih terbuka Ã¢ÂÂ belum kena TP/SL/timeout. */
 export async function getOpenSignals(limit = 50) {
   const { data, error } = await supabasePublic
     .from("signal_outcomes")
@@ -101,7 +103,7 @@ export async function getOpenSignals(limit = 50) {
   return (data ?? []) as SignalOutcomeRow[];
 }
 
-/** Riwayat sinyal yang sudah selesai â dasar hitung win rate. */
+/** Riwayat sinyal yang sudah selesai Ã¢ÂÂ dasar hitung win rate. */
 export async function getClosedSignals(limit = 100) {
   const { data, error } = await supabasePublic
     .from("signal_outcomes")
