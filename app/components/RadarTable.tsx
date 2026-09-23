@@ -26,6 +26,7 @@ function Hero({ track, stale }: { track: CoinTrack; stale: boolean }) {
   const levels = [
     { name: "TP1", price: latest.tp1_price, touches: latest.tp1_touches },
     { name: "TP2", price: latest.tp2_price, touches: latest.tp2_touches },
+    { name: "Entry", price: latest.support_price, touches: latest.support_touches },
   ].filter(
     (l): l is { name: string; price: number; touches: number | null } => l.price !== null
   );
@@ -91,7 +92,7 @@ function Hero({ track, stale }: { track: CoinTrack; stale: boolean }) {
 
       {levels.length > 0 && (
         <div className="levels">
-          <h3 className="levels-title">Level resisten mingguan</h3>
+          <h3 className="levels-title">Level teknikal mingguan</h3>
           <ul className="levels-list">
             {levels.map((l) => (
               <li key={l.name}>
