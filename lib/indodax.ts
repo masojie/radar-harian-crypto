@@ -1069,3 +1069,23 @@ export function findNearestResistanceLevels(
     .sort((a, b) => a.price - b.price)
     .slice(0, count);
 }
+
+/**
+ * Kebalikan dari findNearestResistanceLevels: cari level SUPPORT (di
+ * bawah harga sekarang) terdekat, dipakai sebagai acuan ENTRY manual -
+ * bukan target profit seperti TP, tapi area yang secara historis
+ * sering jadi titik harga berbalik naik, jadi referensi kapan
+ * sebaiknya masuk (bukan sekadar beli di harga scan saat ini).
+ * Sort DESCENDING (kebalikan resistance yang ascending) supaya level
+ * yang PALING DEKAT dari bawah harga sekarang muncul duluan.
+ */
+export function findNearestSupportLevels(
+  levels: PriceLevel[],
+  currentPrice: number,
+  count = 1
+): PriceLevel[] {
+  return levels
+    .filter((l) => l.type === "support" && l.price < currentPrice)
+    .sort((a, b) => b.price - a.price)
+    .slice(0, count);
+}
