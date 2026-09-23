@@ -61,15 +61,15 @@ export async function GET(request: Request) {
 
         if (gate.broadcasted) {
           const f = (v: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
-          let msg = "🚨 *SCAN OTOMATIS - Momentum Bullish Terdeteksi*\n\n";
+          let msg = "\u{1F6A8} *SCAN OTOMATIS - Momentum Bullish Terdeteksi*\n\n";
           for (let j = 0; j < top3.length; j++) {
             const c = top3[j];
-            msg += (j + 1) + ". 🟢 " + c.symbol + " - RSI " + c.rsi.toFixed(1) + " - " + f(c.price) + "\n";
+            msg += (j + 1) + ". \u{1F7E2} " + c.symbol + " - RSI " + c.rsi.toFixed(1) + " - " + f(c.price) + "\n";
             if (j === 0 && resistances.length >= 2) msg += "   TP1 (resistance terdekat): " + f(resistances[0].price) + " (" + resistances[0].touches + "x disentuh)\n   TP2 (resistance berikutnya): " + f(resistances[1].price) + " (" + resistances[1].touches + "x disentuh)\n";
             if (j === 0 && supports.length >= 1) msg += "   Entry (support terdekat): " + f(supports[0].price) + " (" + supports[0].touches + "x disentuh)\n";
           }
           msg += "\nDitemukan " + bullish.length + " coin bullish. TP1/TP2 dari level resistance historis, Entry dari level support historis (candle mingguan, minimal 3x disentuh). Untuk detail lengkap salah satu, ketik /analisa <coin> di chat bot.\n";
-          msg += "Ini deteksi momentum yang SUDAH mulai bergerak, bukan prediksi masa depan.\n\n⚡ RadarView — pantau live di sini";
+          msg += "Ini deteksi momentum yang SUDAH mulai bergerak, bukan prediksi masa depan.\n\n\u26A1 [RadarView \u2014 pantau live di sini](https://radar-harian-crypto.vercel.app)";
           await sendTelegramMessage(msg);
           break;
         }
