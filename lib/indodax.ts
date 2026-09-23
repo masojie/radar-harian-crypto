@@ -757,7 +757,7 @@ export interface ScanResult {
 
 // Minimal volume 24 jam supaya coin ikut di-scan - di bawah ini
 // data candle-nya sering tidak reliable (jarang ada transaksi).
-const SCAN_MIN_VOLUME_IDR = 300_000_000; // Rp 300 juta
+const SCAN_MIN_VOLUME_IDR = 200_000_000; // Rp 200 juta
 
 // Batas jumlah coin yang benar-benar di-scan per pemanggilan,
 // supaya tidak kena rate limit Indodax (180 request/menit) atau
@@ -801,6 +801,10 @@ const SCAN_EXCLUDED_SYMBOLS = new Set(["USDT", "USDC", "DAI", "TUSD", "BUSD", "F
  * Angka ini dipakai bersama oleh scanBullishCoins (channel), scanNearestToThreshold
  * (heartbeat), dan analyzeMultiTimeframe (/analisa) lewat konstanta yang sama,
  * jangan di-hardcode terpisah lagi supaya ketiganya tidak beda arah.
+ *
+ * CATATAN 4: SCAN_MIN_VOLUME_IDR diturunkan lagi dari Rp300jt ke Rp200jt
+ * atas permintaan user (23 Sep 2026), supaya lebih banyak coin volume
+ * kecil-menengah ikut lolos ke tahap RSI.
  */
 export async function scanBullishCoins(): Promise<ScanResult[]> {
   // Ambil semua coin, urutkan volume, filter yang di bawah ambang
