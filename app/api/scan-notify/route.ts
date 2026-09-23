@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getTopVolumeCoins, getIntradayCandles } from "@/lib/indodax";
+import { getTopVolumeCoins, getIntradayCandles, type TopCoin } from "@/lib/indodax";
 import { buildRadarMessage } from "@/lib/format";
 import { sendTelegramMessage } from "@/lib/telegram";
 import {
@@ -60,8 +60,20 @@ export async function GET(request: Request) {
   }
 
   try {
-    // 1. Ambil semua coin dalam range volume 200–500 juta
-    const allCoins = await getTopVolumeCoins(100);
+    // 1. Ambil semua coin dalam range volume 200–500 juta.
+    // Retry sekali kalau fetch ke Indodax gagal/flaky — 1x hiccup
+    // jangan sampai bikin seluruh cycle scan (5 menit) gagal total.
+    let allCoins: TopCoin[];
+    try {
+      allCoins = await getTopVolumeCoins(100);
+    } catch (fetchErr) {
+      console.error(
+        "Scan-notify: fetch ticker_all gagal, retry sekali dalam 1.5 detik:",
+        fetchErr instanceof Error ? fetchErr.message : fetchErr
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      allCoins = await getTopVolumeCoins(100);
+    }
 
     const oversold: Array<{
       symbol: string;
