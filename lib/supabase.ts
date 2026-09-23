@@ -79,6 +79,8 @@ export interface BullishScanRow {
   tp1_touches: number | null;
   tp2_price: number | null;
   tp2_touches: number | null;
+  support_price: number | null;
+  support_touches: number | null;
 }
 
 /**
