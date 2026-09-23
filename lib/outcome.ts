@@ -41,6 +41,8 @@ export interface OpenSignalGateInput {
   tp1Touches?: number;
   tp2Res?: number;
   tp2Touches?: number;
+  supportRes?: number;
+  supportTouches?: number;
 }
 
 export interface GateResult {
@@ -83,6 +85,8 @@ export async function openSignalViaGate(
     p_tp1_touches: input.tp1Touches ?? null,
     p_tp2_res: input.tp2Res ?? null,
     p_tp2_touches: input.tp2Touches ?? null,
+    p_support_res: input.supportRes ?? null,
+    p_support_touches: input.supportTouches ?? null,
   });
 
   if (error) {
