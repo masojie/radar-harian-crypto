@@ -73,6 +73,7 @@ export async function POST(request: Request) {
       const symbol = parts[1].toUpperCase();
       try {
         const { analyzeMultiTimeframe, calculateSpotLevels, scanBullishCoins, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels } = await import("@/lib/indodax");
+        const { buildAnalisaMessage } = await import("@/lib/format");
         const [mtf, levels, bullish] = await Promise.all([
           analyzeMultiTimeframe(symbol + "IDR"),
           calculateSpotLevels(symbol + "IDR", (await getCoinPrice(symbol))?.lastPrice ?? 0),
@@ -80,24 +81,7 @@ export async function POST(request: Request) {
         ]);
 
         const coinScan = bullish.find((c: any) => c.symbol === symbol);
-        const f = (v: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
-
-        let reply = "📊 *Analisa " + symbol + "*\n\n";
-        reply += "💰 Harga: " + f(mtf.currentPrice) + "\n";
-        reply += "📡 Sinyal: *" + mtf.signal + "*" + (mtf.confidence ? " (" + mtf.confidence + ")" : "") + "\n";
-        reply += "📈 EMA: " + mtf.emaWeightedScore + "/8 | RSI: " + mtf.rsiWeightedScore + "/8\n";
-        reply += "📊 Volume 1h: " + mtf.volumeRatio1h.toFixed(1) + "x\n";
-        if (coinScan) reply += "🔍 RSI Scan: " + coinScan.rsi.toFixed(1) + "\n";
-        reply += "\n" + mtf.reason + "\n";
-
-        if (mtf.signal === "BUY") {
-          reply += "\n🎯 *Level TP/SL:*\n";
-          reply += "TP1: " + f(levels.takeProfit1) + "\n";
-          reply += "TP2: " + f(levels.takeProfit2) + "\n";
-          reply += "TP3: " + f(levels.takeProfit3) + "\n";
-          reply += "SL Tight: " + f(levels.stopLossTight) + "\n";
-          reply += "SL Wide: " + f(levels.stopLossWide);
-        }
+        const reply = buildAnalisaMessage(symbol, mtf, levels, coinScan);
 
         await tgReply(chatId, reply);
       } catch (e: any) {

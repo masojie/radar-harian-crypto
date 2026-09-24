@@ -1,4 +1,4 @@
-import type { TopCoin } from "./indodax";
+import type { TopCoin, MultiTimeframeSignal, SpotPositionLevels, ScanResult } from "./indodax";
 
 /**
  * Escape karakter yang punya makna spesial di Telegram Markdown (legacy mode),
@@ -94,4 +94,68 @@ export function buildCoinPriceMessage(coin: TopCoin): string {
     `Jual: ${formatRupiah(coin.sellPrice)}\n` +
     `Volume 24 Jam: ${formatVolumeSingkat(coin.volumeIdr)}`
   );
+}
+
+
+/**
+ * Bar visual 8-kotak buat skor EMA/RSI (0-8), contoh: 3 -> "▓▓▓░░░░░".
+ * Dipakai buildAnalisaMessage biar skor gak cuma angka mentah "3/8".
+ */
+function scoreBar(score: number, total = 8): string {
+  const filled = Math.max(0, Math.min(total, Math.round(score)));
+  return "▓".repeat(filled) + "░".repeat(total - filled);
+}
+
+const SIGNAL_EMOJI: Record<MultiTimeframeSignal["signal"], string> = {
+  BUY: "🟢",
+  SELL: "🔴",
+  TUNGGU: "🟡",
+};
+
+/**
+ * Susun pesan balasan buat command /analisa <coin>.
+ * Gabungin 3 sumber data (sinyal multi-timeframe, level TP/SL, hasil
+ * scan radar) jadi satu pesan yang enak dibaca — emoji sinyal di judul
+ * biar ketauan duluan sebelum baca detail, bar visual buat skor EMA/RSI,
+ * dan alasan sinyal dikasih miring biar kebaca sebagai catatan, bukan
+ * lanjutan data mentah.
+ */
+export function buildAnalisaMessage(
+  symbol: string,
+  mtf: MultiTimeframeSignal,
+  levels: SpotPositionLevels,
+  coinScan?: ScanResult
+): string {
+  const safeSymbol = escapeMarkdown(symbol);
+  const signalEmoji = SIGNAL_EMOJI[mtf.signal];
+
+  const lines = [
+    `${signalEmoji} *Analisa ${safeSymbol}*`,
+    `💰 ${formatRupiah(mtf.currentPrice)}`,
+    ``,
+    `*Sinyal: ${mtf.signal}*${mtf.confidence ? ` (keyakinan ${mtf.confidence})` : ""}`,
+    `EMA     ${scoreBar(mtf.emaWeightedScore)}  ${mtf.emaWeightedScore}/8`,
+    `RSI     ${scoreBar(mtf.rsiWeightedScore)}  ${mtf.rsiWeightedScore}/8`,
+    `Volume 1h  ${mtf.volumeRatio1h.toFixed(1)}x${mtf.volumeConfirmed ? " ✅" : ""}`,
+  ];
+
+  if (coinScan) {
+    lines.push(`🔍 Lolos scan radar — RSI ${coinScan.rsi.toFixed(1)}`);
+  }
+
+  lines.push(``, `_${escapeMarkdown(mtf.reason)}_`);
+
+  if (mtf.signal === "BUY") {
+    lines.push(
+      ``,
+      `🎯 *Level TP/SL*`,
+      `TP1  ${formatRupiah(levels.takeProfit1)}`,
+      `TP2  ${formatRupiah(levels.takeProfit2)}`,
+      `TP3  ${formatRupiah(levels.takeProfit3)}`,
+      `SL ketat  ${formatRupiah(levels.stopLossTight)}`,
+      `SL lebar  ${formatRupiah(levels.stopLossWide)}`
+    );
+  }
+
+  return lines.join("\n");
 }
