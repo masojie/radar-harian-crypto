@@ -194,8 +194,8 @@ const MTF_TIMEFRAMES = [
 
 const MTF_TOTAL_WEIGHT = 8;
 const RSI_OVERSOLD_THRESHOLD = 40;
-const MTF_WEIGHTED_THRESHOLD = 6;
-const VOLUME_CONFIRMATION_THRESHOLD = 1.5;
+const MTF_WEIGHTED_THRESHOLD = 5;
+const VOLUME_CONFIRMATION_THRESHOLD = 1.2;
 
 export async function getIntradayCandles(pairSymbol: string, tf: string, candleCount: number): Promise<Candle[]> {
   const tfMinutes = Number(tf);
