@@ -6,6 +6,14 @@ import { openSignalViaGate } from "@/lib/outcome";
 
 export const maxDuration = 60;
 
+// Batas berapa kandidat oversold yang dicoba lewat gate per cycle. Dulu
+// cuma nyoba top3 (RSI terendah) - kalau top3 itu KEBETULAN semua udah
+// punya posisi open ("posisi_masih_terbuka"), notif gak pernah nyampe
+// Telegram walaupun ada kandidat lain di bawahnya yang gak keblokir.
+// Sekarang lanjut ke kandidat berikutnya kalau satu gagal, dibatasi
+// MAX_ATTEMPTS supaya durasi request tetap wajar (maxDuration 60 detik).
+const MAX_ATTEMPTS = 15;
+
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
@@ -22,8 +30,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: true, count: 0 });
     }
 
-    const top3 = bullish.slice(0, 3);
-
     const bullRows: BullishScanRow[] = bullish.map((coin, idx) => ({
       symbol: coin.symbol,
       rsi: coin.rsi,
@@ -37,8 +43,10 @@ export async function GET(request: Request) {
       console.error("DB save fail:", e?.message);
     }
 
-    for (let i = 0; i < top3.length; i++) {
-      const coin = top3[i];
+    const attempts = Math.min(bullish.length, MAX_ATTEMPTS);
+
+    for (let i = 0; i < attempts; i++) {
+      const coin = bullish[i];
       try {
         const weekly = await getWeeklyCandlesFull(coin.symbol + "IDR");
         const levels = detectSupportResistanceLevels(weekly, coin.price);
@@ -61,15 +69,21 @@ export async function GET(request: Request) {
 
         if (gate.broadcasted) {
           const f = (v: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
-          let msg = "\u{1F6A8} *SCAN OTOMATIS - Momentum Bullish Terdeteksi*\n\n";
-          for (let j = 0; j < top3.length; j++) {
-            const c = top3[j];
-            msg += (j + 1) + ". \u{1F7E2} " + c.symbol + " - RSI " + c.rsi.toFixed(1) + " - " + f(c.price) + "\n";
-            if (j === 0 && resistances.length >= 2) msg += "   TP1 (resistance terdekat): " + f(resistances[0].price) + " (" + resistances[0].touches + "x disentuh)\n   TP2 (resistance berikutnya): " + f(resistances[1].price) + " (" + resistances[1].touches + "x disentuh)\n";
-            if (j === 0 && supports.length >= 1) msg += "   Entry (support terdekat): " + f(supports[0].price) + " (" + supports[0].touches + "x disentuh)\n";
-          }
+          let msg = "🚨 *SCAN OTOMATIS - Momentum Bullish Terdeteksi*\n\n";
+          msg += "1. 🟢 " + coin.symbol + " - RSI " + coin.rsi.toFixed(1) + " - " + f(coin.price) + "\n";
+          if (resistances.length >= 2) msg += "   TP1 (resistance terdekat): " + f(resistances[0].price) + " (" + resistances[0].touches + "x disentuh)\n   TP2 (resistance berikutnya): " + f(resistances[1].price) + " (" + resistances[1].touches + "x disentuh)\n";
+          if (supports.length >= 1) msg += "   Entry (support terdekat): " + f(supports[0].price) + " (" + supports[0].touches + "x disentuh)\n";
+
+          // Kandidat lain buat konteks doang (tanpa TP/Entry, biar gak
+          // ketuker sama level punya coin yang benar-benar disiarkan di
+          // atas) - ambil dari sisa bullish, kecualikan coin yang barusan.
+          const others = bullish.filter((c) => c.symbol !== coin.symbol).slice(0, 2);
+          others.forEach((c, k) => {
+            msg += (k + 2) + ". 🟢 " + c.symbol + " - RSI " + c.rsi.toFixed(1) + " - " + f(c.price) + "\n";
+          });
+
           msg += "\nDitemukan " + bullish.length + " coin bullish. TP1/TP2 dari level resistance historis, Entry dari level support historis (candle mingguan, minimal 3x disentuh). Untuk detail lengkap salah satu, ketik /analisa <coin> di chat bot.\n";
-          msg += "Ini deteksi momentum yang SUDAH mulai bergerak, bukan prediksi masa depan.\n\n\u26A1 [RadarView \u2014 pantau live di sini](https://radar-harian-crypto.vercel.app)";
+          msg += "Ini deteksi momentum yang SUDAH mulai bergerak, bukan prediksi masa depan.\n\n⚡ [RadarView — pantau live di sini](https://radar-harian-crypto.vercel.app)";
           await sendTelegramMessage(msg);
           break;
         }
@@ -78,7 +92,7 @@ export async function GET(request: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true, count: bullish.length, top3: top3.map((c: any) => c.symbol) });
+    return NextResponse.json({ ok: true, count: bullish.length, top3: bullish.slice(0, 3).map((c: any) => c.symbol) });
   } catch (error: any) {
     console.error("Scan-notify fail:", error?.message);
     return NextResponse.json({ ok: false, error: error?.message }, { status: 500 });
