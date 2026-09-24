@@ -1,4 +1,4 @@
-import type { TopCoin, MultiTimeframeSignal, SpotPositionLevels, ScanResult } from "./indodax";
+import type { TopCoin, MultiTimeframeSignal, SpotPositionLevels, ScanResult, PriceLevel } from "./indodax";
 
 /**
  * Escape karakter yang punya makna spesial di Telegram Markdown (legacy mode),
@@ -124,7 +124,8 @@ export function buildAnalisaMessage(
   symbol: string,
   mtf: MultiTimeframeSignal,
   levels: SpotPositionLevels,
-  coinScan?: ScanResult
+  coinScan?: ScanResult,
+  srLevels?: { support: PriceLevel[]; resistance: PriceLevel[] }
 ): string {
   const safeSymbol = escapeMarkdown(symbol);
   const signalEmoji = SIGNAL_EMOJI[mtf.signal];
@@ -144,6 +145,20 @@ export function buildAnalisaMessage(
   }
 
   lines.push(``, `_${escapeMarkdown(mtf.reason)}_`);
+
+  const nearestSupport = srLevels?.support[0];
+  const nearestResistance = srLevels?.resistance[0];
+  if (nearestSupport || nearestResistance) {
+    lines.push(``, `📍 *Support/Resistance* (mingguan)`);
+    if (nearestSupport) {
+      const jarak = ((mtf.currentPrice - nearestSupport.price) / mtf.currentPrice) * 100;
+      lines.push(`Support     ${formatRupiah(nearestSupport.price)}  (${nearestSupport.touches}x sentuh, ${jarak.toFixed(1)}% di bawah)`);
+    }
+    if (nearestResistance) {
+      const jarak = ((nearestResistance.price - mtf.currentPrice) / mtf.currentPrice) * 100;
+      lines.push(`Resistance  ${formatRupiah(nearestResistance.price)}  (${nearestResistance.touches}x sentuh, ${jarak.toFixed(1)}% di atas)`);
+    }
+  }
 
   if (mtf.signal === "BUY") {
     lines.push(

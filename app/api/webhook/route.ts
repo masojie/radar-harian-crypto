@@ -51,16 +51,29 @@ export async function POST(request: Request) {
       }
       const symbol = parts[1].toUpperCase();
       try {
-        const { analyzeMultiTimeframe, calculateSpotLevels, scanBullishCoins, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels } = await import("@/lib/indodax");
+        const { analyzeMultiTimeframe, calculateSpotLevels, scanBullishCoins, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels, findNearestSupportLevels } = await import("@/lib/indodax");
         const { buildAnalisaMessage } = await import("@/lib/format");
-        const [mtf, levels, bullish] = await Promise.all([
+
+        const priceInfo = await getCoinPrice(symbol);
+        const currentPrice = priceInfo?.lastPrice ?? 0;
+
+        const [mtf, levels, bullish, weeklyCandles] = await Promise.all([
           analyzeMultiTimeframe(symbol + "IDR"),
-          calculateSpotLevels(symbol + "IDR", (await getCoinPrice(symbol))?.lastPrice ?? 0),
+          calculateSpotLevels(symbol + "IDR", currentPrice),
           scanBullishCoins(),
+          getWeeklyCandlesFull(symbol + "IDR"),
         ]);
 
+        // Support/resistance dari struktur candle mingguan (5 tahun) - level besar
+        // yang sudah terbukti dipantulkan berkali-kali, bukan cuma persentase tetap.
+        const srAllLevels = detectSupportResistanceLevels(weeklyCandles, currentPrice);
+        const srLevels = {
+          support: findNearestSupportLevels(srAllLevels, currentPrice),
+          resistance: findNearestResistanceLevels(srAllLevels, currentPrice),
+        };
+
         const coinScan = bullish.find((c: any) => c.symbol === symbol);
-        const reply = buildAnalisaMessage(symbol, mtf, levels, coinScan);
+        const reply = buildAnalisaMessage(symbol, mtf, levels, coinScan, srLevels);
 
         await tgReply(chatId, reply);
       } catch (e: any) {
