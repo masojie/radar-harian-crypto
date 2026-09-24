@@ -410,3 +410,11 @@ export async function getWeeklyCandlesFull(pairSymbol: string): Promise<Candle[]
 export function findNearestResistanceLevels(levels: PriceLevel[], currentPrice: number, count = 2): PriceLevel[] {
   return levels.filter((l) => l.type === "resistance" && l.price > currentPrice).sort((a, b) => a.price - b.price).slice(0, count);
 }
+
+export async function getTopVolumeCoinsInRange(limit = 5): Promise<TopCoin[]> {
+  const pool = await getTopVolumeCoins(200);
+  return pool
+    .filter((c) => c.volumeIdr >= SCAN_MIN_VOLUME_IDR)
+    .filter((c) => c.volumeIdr <= SCAN_MAX_VOLUME_IDR)
+    .slice(0, limit);
+}

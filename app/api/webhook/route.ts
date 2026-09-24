@@ -30,9 +30,9 @@ export async function POST(request: Request) {
 
     if (lower === "/radar") {
       try {
-        const { getTopVolumeCoins } = await import("@/lib/indodax");
+        const { getTopVolumeCoinsInRange } = await import("@/lib/indodax");
         const { buildRadarMessage } = await import("@/lib/format");
-        const coins = await getTopVolumeCoins(5);
+        const coins = await getTopVolumeCoinsInRange(5);
         if (coins.length === 0) {
           await tgReply(chatId, "📡 Tidak ada coin dalam range volume Rp200-500 juta saat ini.");
         } else {
