@@ -411,6 +411,12 @@ export function findNearestResistanceLevels(levels: PriceLevel[], currentPrice: 
   return levels.filter((l) => l.type === "resistance" && l.price > currentPrice).sort((a, b) => a.price - b.price).slice(0, count);
 }
 
+// Pasangan findNearestResistanceLevels buat sisi support - dibutuhkan buat
+// entry BUY berdasarkan support terkuat, yang sebelumnya belum ada padanannya.
+export function findNearestSupportLevels(levels: PriceLevel[], currentPrice: number, count = 2): PriceLevel[] {
+  return levels.filter((l) => l.type === "support" && l.price < currentPrice).sort((a, b) => b.price - a.price).slice(0, count);
+}
+
 export async function getTopVolumeCoinsInRange(limit = 5): Promise<TopCoin[]> {
   const pool = await getTopVolumeCoins(200);
   return pool
