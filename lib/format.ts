@@ -97,95 +97,65 @@ export function buildCoinPriceMessage(coin: TopCoin): string {
 }
 
 
-/**
- * Bar dua warna 8-kotak buat skor bullish vs bearish (bobot total 8):
- * hijau = bobot bullish, merah = sisanya (bearish). Contoh 3 -> "🟩🟩🟩🟥🟥🟥🟥🟥".
- *
- * Sengaja emoji kotak, bukan karakter blok "▓░": font Telegram merender
- * blok itu jadi pola titik yang kontrasnya lemah (8/8 dan 0/8 susah
- * dibedakan sekilas). Emoji kotak jelas di tema gelap maupun terang, dan
- * dua warna langsung nunjukin skor "8 vs 0" yang ada di teks alasan.
- */
-function dualBar(bullishScore: number, total = 8): string {
-  const green = Math.max(0, Math.min(total, Math.round(bullishScore)));
-  return "🟩".repeat(green) + "🟥".repeat(total - green);
-}
-
 const SIGNAL_EMOJI: Record<MultiTimeframeSignal["signal"], string> = {
   BUY: "🟢",
   SELL: "🔴",
   TUNGGU: "🟡",
 };
 
-/** RSI ke teks 1 desimal; "-" kalau belum valid (candle kurang -> NaN). */
+/**
+ * Format angka desimal gaya Indonesia (koma, bukan titik), contoh: 58.4 -> "58,4".
+ */
+function idNum(value: number, digits = 1): string {
+  return value.toLocaleString("id-ID", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+/**
+ * Bar ASCII buat skor (dari total 8), contoh 6 -> "▬▬▬▬▬▬░░".
+ * Dipakai di dalam satu blok kode gede, jadi sengaja karakter ASCII biasa
+ * (bukan emoji kotak) supaya lebar kolomnya rata di font monospace.
+ */
+function asciiBar(score: number, total = 8): string {
+  const filled = Math.max(0, Math.min(total, Math.round(score)));
+  return "▬".repeat(filled) + "░".repeat(total - filled);
+}
+
+/** Label kata dari skor 0-8, biar gak cuma angka doang buat orang awam. */
+function scoreLabel(score: number, total = 8): string {
+  if (score >= total * 0.75) return "kuat";
+  if (score <= total * 0.25) return "lemah";
+  return "netral";
+}
+
+/** RSI ke teks 1 desimal (gaya Indonesia); "-" kalau belum valid (candle kurang -> NaN). */
 function formatRsi(value: number): string {
-  return Number.isFinite(value) ? value.toFixed(1) : "-";
+  return Number.isFinite(value) ? idNum(value, 1) : "-";
 }
 
 /** Selisih persen dari harga acuan ke target, dengan tanda. Contoh: "+5%" / "-3%". */
 function signedPercent(from: number, to: number, digits: number): string {
   if (!(from > 0)) return "";
   const pct = ((to - from) / from) * 100;
-  return `${pct >= 0 ? "+" : "-"}${Math.abs(pct).toFixed(digits)}%`;
+  return `${pct >= 0 ? "+" : "-"}${idNum(Math.abs(pct), digits)}%`;
 }
 
-/** Keterangan satu level S/R: jarak dari harga sekarang + berapa kali disentuh. */
+/** Keterangan satu level S/R: jarak dari harga sekarang + berapa kali level itu tertahan. */
 function levelNote(currentPrice: number, level: PriceLevel): string {
-  return [signedPercent(currentPrice, level.price, 1), `${level.touches}x sentuh`]
+  return [signedPercent(currentPrice, level.price, 1), `${level.touches}x tertahan`]
     .filter(Boolean)
     .join(" · ");
 }
 
 /**
- * Tabel per-timeframe (1m/5m/15m/30m/1h) dalam blok kode biar kolomnya
- * rata. Isinya ASCII saja — di blok monospace, emoji/simbol lebar bikin
- * kolom geser. Data ini sebelumnya sudah dihitung analyzeMultiTimeframe()
- * tapi cuma tampil sebagai skor gabungan.
- */
-function timeframeTable(votes: MultiTimeframeSignal["votes"]): string {
-  const header = `${"TF".padEnd(4)}${"EMA".padEnd(7)}${"RSI".padStart(5)}`;
-  const rows = votes.map(
-    (v) =>
-      `${v.label.padEnd(4)}${(v.emaBullish ? "naik" : "turun").padEnd(7)}${formatRsi(v.rsiValue).padStart(5)}`
-  );
-  return ["```", header, ...rows, "```"].join("\n");
-}
-
-/**
- * Blok Entry + TP/SL (blok kode, kolom rata). Persen dihitung dari harga
- * entry: TP dan SL di sini persentase tetap (+5/+10/+15%, -3/-5%), BUKAN
- * level resistance/support dari chart — persennya sengaja ditampilkan
- * biar itu keliatan jelas.
- */
-function levelsBlock(levels: SpotPositionLevels): string {
-  const entry = levels.entry;
-  const rows: Array<[string, string, string]> = [
-    ["Entry", formatRupiah(entry), ""],
-    ["TP1", formatRupiah(levels.takeProfit1), signedPercent(entry, levels.takeProfit1, 0)],
-    ["TP2", formatRupiah(levels.takeProfit2), signedPercent(entry, levels.takeProfit2, 0)],
-    ["TP3", formatRupiah(levels.takeProfit3), signedPercent(entry, levels.takeProfit3, 0)],
-    ["SL ketat", formatRupiah(levels.stopLossTight), signedPercent(entry, levels.stopLossTight, 0)],
-    ["SL lebar", formatRupiah(levels.stopLossWide), signedPercent(entry, levels.stopLossWide, 0)],
-  ];
-  const priceWidth = Math.max(...rows.map((r) => r[1].length));
-  const body = rows.map(([label, price, pct]) =>
-    `${label.padEnd(9)}${price.padStart(priceWidth)}  ${pct.padStart(4)}`.trimEnd()
-  );
-  return ["```", ...body, "```"].join("\n");
-}
-
-/**
  * Susun pesan balasan buat command /analisa <coin>.
- * Gabungin 3 sumber data (sinyal multi-timeframe, level TP/SL, hasil
- * scan radar) jadi satu kartu: verdict + coin + harga di baris pertama,
- * dua bar warna (EMA/RSI) yang nunjukin kenapa sinyalnya begitu, tabel
- * per-timeframe, alasan sinyal (miring), tangga support/resistance
- * mingguan, dan blok TP/SL kalau sinyalnya BUY.
+ * Seluruh kartu jadi satu blok kode (monospace): garis pohon (├ └) buat
+ * ngelompokin data, bar ASCII buat skor, dan kalimat alasan sinyal apa
+ * adanya — bukan cuma istilah teknis. Chart-nya sekarang tombol inline
+ * terpisah (lihat app/api/webhook/route.ts), bukan link di teks.
  *
- * Parse mode Telegram-nya Markdown legacy: entity gak boleh nested, dan
- * escape di dalam entity gak didukung. Makanya teks dinamis (symbol,
- * alasan) di-escape lewat escapeMarkdown dan angka/simbol lain dijaga
- * bebas dari karakter _ * ` [.
+ * Karena semuanya di dalam satu blok ``` , Telegram gak parse entity
+ * apapun di isinya — makanya symbol/alasan gak perlu (dan gak boleh)
+ * di-escapeMarkdown lagi di sini, beda dari tampilan sebelum blok-kode ini.
  */
 export function buildAnalisaMessage(
   symbol: string,
@@ -194,55 +164,63 @@ export function buildAnalisaMessage(
   coinScan?: ScanResult,
   srLevels?: { support: PriceLevel[]; resistance: PriceLevel[] }
 ): string {
-  const safeSymbol = escapeMarkdown(symbol);
-  const signalEmoji = SIGNAL_EMOJI[mtf.signal];
-  const confidence = mtf.confidence ? ` · keyakinan ${mtf.confidence}` : "";
+  const waktuJakarta = new Date().toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 
   const lines = [
-    `${signalEmoji} *${safeSymbol}* — *${mtf.signal}*${confidence}`,
-    `💰 ${formatRupiah(mtf.currentPrice)}`,
+    symbol,
+    `${formatRupiah(mtf.currentPrice)} · ${SIGNAL_EMOJI[mtf.signal]} ${mtf.signal}${mtf.confidence ? ` · keyakinan ${mtf.confidence}` : ""}`,
     ``,
-    `*EMA*  ${dualBar(mtf.emaWeightedScore)}  *${mtf.emaWeightedScore}/8*`,
-    `*RSI*  ${dualBar(mtf.rsiWeightedScore)}  *${mtf.rsiWeightedScore}/8*`,
-    `*Volume 1h*  ${mtf.volumeRatio1h.toFixed(1)}x ${mtf.volumeConfirmed ? "✅" : "⚠️"}`,
+    mtf.reason,
+    ``,
+    `Skor`,
+    `├ EMA      ${asciiBar(mtf.emaWeightedScore)} ${mtf.emaWeightedScore}/8  ${scoreLabel(mtf.emaWeightedScore)}`,
+    `├ RSI      ${asciiBar(mtf.rsiWeightedScore)} ${mtf.rsiWeightedScore}/8  ${scoreLabel(mtf.rsiWeightedScore)}`,
+    `└ Volume   ${idNum(mtf.volumeRatio1h, 1)}x ${mtf.volumeConfirmed ? "✅" : "⚠️"}  ${mtf.volumeConfirmed ? "ramai" : "sepi"}`,
   ];
 
   if (coinScan) {
-    lines.push(`🔍 Lolos scan radar — RSI ${coinScan.rsi.toFixed(1)}`);
+    lines.push(``, `Lolos scan radar — RSI ${idNum(coinScan.rsi, 1)}`);
   }
 
   if (mtf.votes.length > 0) {
-    lines.push(``, `🕒 *Per timeframe*`, timeframeTable(mtf.votes));
+    lines.push(``, `Per timeframe`);
+    mtf.votes.forEach((v, i) => {
+      const branch = i === mtf.votes.length - 1 ? "└" : "├";
+      lines.push(`${branch} ${v.label.padEnd(4)} ${(v.emaBullish ? "naik " : "turun")} ${formatRsi(v.rsiValue).padStart(5)}`);
+    });
   }
 
-  lines.push(``, `💬 _${escapeMarkdown(mtf.reason)}_`);
-
-  // Tangga level mingguan: resistance di atas, support di bawah (urutan
-  // kayak di chart). Baris jarak dipisah biar baris utama gak wrap di HP
-  // waktu harganya panjang (contoh Rp355.021).
   const nearestSupport = srLevels?.support[0];
   const nearestResistance = srLevels?.resistance[0];
   if (nearestSupport || nearestResistance) {
-    lines.push(``, `📍 *Support & Resistance* (mingguan)`);
+    const srRows: string[] = [];
     if (nearestResistance) {
-      lines.push(
-        `🔴 Resistance  ${formatRupiah(nearestResistance.price)}`,
-        `      _${levelNote(mtf.currentPrice, nearestResistance)}_`
-      );
+      srRows.push(`Atas   ${formatRupiah(nearestResistance.price)} · ${levelNote(mtf.currentPrice, nearestResistance)}`);
     }
     if (nearestSupport) {
-      lines.push(
-        `🟢 Support  ${formatRupiah(nearestSupport.price)}`,
-        `      _${levelNote(mtf.currentPrice, nearestSupport)}_`
-      );
+      srRows.push(`Bawah  ${formatRupiah(nearestSupport.price)} · ${levelNote(mtf.currentPrice, nearestSupport)}`);
     }
+    lines.push(``, `Level mingguan`);
+    srRows.forEach((row, i) => {
+      lines.push(`${i === srRows.length - 1 ? "└" : "├"} ${row}`);
+    });
   }
 
   if (mtf.signal === "BUY") {
-    lines.push(``, `🎯 *Level TP/SL*`, levelsBlock(levels));
+    lines.push(
+      ``,
+      `Level TP/SL`,
+      `├ Entry           ${formatRupiah(levels.entry)}`,
+      `├ TP1/2/3         ${signedPercent(levels.entry, levels.takeProfit1, 0)} / ${signedPercent(levels.entry, levels.takeProfit2, 0)} / ${signedPercent(levels.entry, levels.takeProfit3, 0)}`,
+      `└ SL ketat/lebar  ${signedPercent(levels.entry, levels.stopLossTight, 0)} / ${signedPercent(levels.entry, levels.stopLossWide, 0)}`
+    );
   }
 
-  lines.push(``, `_🟩 EMA naik / RSI oversold · 🟥 sebaliknya_`);
+  lines.push(``, `data Indodax ${waktuJakarta} WIB`);
 
-  return lines.join("\n");
+  return "```\n" + lines.join("\n") + "\n```";
 }
