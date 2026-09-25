@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getTopVolumeCoins } from "@/lib/indodax";
+import { getTopVolumeCoinsInRange } from "@/lib/indodax";
 import { buildRadarMessage } from "@/lib/format";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { saveScanResults, type RadarScanRow } from "@/lib/supabase";
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
   // -> ini development lokal yang belum sempat setup .env.local, lolos.
 
   try {
-    const topCoins = await getTopVolumeCoins(5);
+    const topCoins = await getTopVolumeCoinsInRange(5);
     const message = buildRadarMessage(topCoins);
     await sendTelegramMessage(message);
 
