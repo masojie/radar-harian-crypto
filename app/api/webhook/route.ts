@@ -49,7 +49,7 @@ async function buildMultiTimeframeMessage(result: MultiTimeframeSignal): Promise
 
   lines.push(`Harga saat ini: Rp ${formatRupiah(result.currentPrice)}\n`);
 
-  lines.push(`\ud83d\udcc8 [Lihat chart di Indodax](https://indodax.com/chart/${result.symbol})\n`);
+  lines.push(`\ud83d\udcc8 [Lihat chart di Indodax](https://indodax.com/chart/${result.symbol}?theme=dark)\n`);
 
   // Tampilkan vote per timeframe supaya user bisa cocokkan sendiri
   // di app Indodax mereka - transparansi ini yang bikin sinyal bisa
