@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCoinPrice, getTopVolumeCoinsInRange } from "@/lib/indodax";
-import { buildCoinPriceMessage, buildRadarMessage } from "@/lib/format";
+import { buildCoinPriceMessage, buildRadarMessage, formatVolumeSingkat } from "@/lib/format";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { analyzeMultiTimeframe, MultiTimeframeSignal, calculateSpotLevels, SpotPositionLevels, scanBullishCoins, ScanResult, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels, findNearestSupportLevels } from "@/lib/indodax";
 
@@ -47,9 +47,18 @@ function buildScanMessage(results: ScanResult[]): string {
 async function buildMultiTimeframeMessage(result: MultiTimeframeSignal): Promise<string> {
   const lines: string[] = [`\ud83d\udcca *ANALISA MULTI-TIMEFRAME - ${result.symbol}*\n`];
 
-  lines.push(`Harga saat ini: Rp ${formatRupiah(result.currentPrice)}\n`);
+  lines.push(`Harga saat ini: Rp ${formatRupiah(result.currentPrice)}`);
 
-  lines.push(`\ud83d\udcc8 [Lihat chart di Indodax](https://indodax.com/chart/${result.symbol}?theme=dark)\n`);
+  try {
+    const coinInfo = await getCoinPrice(result.symbol);
+    if (coinInfo) {
+      lines.push(`Volume 24 Jam: ${formatVolumeSingkat(coinInfo.volumeIdr)}\n`);
+    } else {
+      lines.push("");
+    }
+  } catch (e) {
+    lines.push("");
+  }
 
   // Tampilkan vote per timeframe supaya user bisa cocokkan sendiri
   // di app Indodax mereka - transparansi ini yang bikin sinyal bisa
@@ -156,6 +165,8 @@ async function buildMultiTimeframeMessage(result: MultiTimeframeSignal): Promise
   lines.push(
     "_Data asli Indodax (Rupiah). Cocokkan indikator EMA9, EMA50, RSI14 di app Indodax kamu (chart > pilih timeframe 1m/5m/15m/30m/1h > indikator EMA & RSI) untuk verifikasi. Bukan saran finansial._"
   );
+  lines.push("");
+  lines.push(`\ud83d\udcc8 [Lihat chart di Indodax](https://indodax.com/chart/${result.symbol}?theme=dark)`);
 
   return lines.join("\n");
 }
