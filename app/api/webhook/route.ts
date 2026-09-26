@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getCoinPrice } from "@/lib/indodax";
-import { buildCoinPriceMessage } from "@/lib/format";
+import { getCoinPrice, getTopVolumeCoinsInRange } from "@/lib/indodax";
+import { buildCoinPriceMessage, buildRadarMessage } from "@/lib/format";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { analyzeMultiTimeframe, MultiTimeframeSignal, calculateSpotLevels, SpotPositionLevels, scanBullishCoins, ScanResult, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels, findNearestSupportLevels } from "@/lib/indodax";
 
@@ -221,6 +221,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  // Command /radar: top 5 coin volume 200-500jt IDR, buat cek cepat
+  // tanpa perlu sebut nama coin.
+  if (/^\/radar(?:@\w+)?/i.test(text)) {
+    try {
+      const coins = await getTopVolumeCoinsInRange(5);
+      if (coins.length === 0) {
+        await sendTelegramMessage(
+          "\ud83d\udce1 Tidak ada coin dalam range volume Rp200-500 juta saat ini.",
+          String(chatId)
+        );
+      } else {
+        await sendTelegramMessage(buildRadarMessage(coins), String(chatId));
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown error";
+      console.error("Webhook /radar gagal:", message);
+      await sendTelegramMessage(
+        "Gagal ambil data radar, coba lagi sebentar lagi.",
+        String(chatId)
+      ).catch(() => {});
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   // Command /analisa <coin>: WAJIB ada argumen coin, karena sistem
   // multi-timeframe ini menganalisis 5 timeframe sekaligus untuk
   // 1 coin - jauh lebih berat dari analisa harian sebelumnya.
@@ -278,6 +303,7 @@ export async function POST(request: Request) {
     const helpMessage = [
       "\ud83d\udcd6 *PANDUAN RADAR CRYPTO*\n",
       "*Command yang tersedia:*",
+      "`/radar` - top 5 coin volume Rp200-500 juta 24 jam\n",
       "`/harga <coin>` - cek harga saat ini",
       "Contoh: `/harga btc`\n",
       "`/analisa <coin>` - analisis multi-timeframe lengkap",
