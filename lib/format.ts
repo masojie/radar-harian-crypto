@@ -65,8 +65,9 @@ export function buildRadarMessage(coins: TopCoin[]): string {
   });
 
   return (
-    `⚡ ${waktuJakarta} WIB\n` +
-    `*Radar Harian Crypto — Top ${coins.length} Volume Indodax*\n\n` +
+    `📡 *Radar Harian Crypto*\n` +
+    `Top ${coins.length} Volume Indodax\n` +
+    `🕐 ${waktuJakarta} WIB\n\n` +
     lines.join("\n\n") +
     `\n\n_Data: Indodax API, diurutkan berdasarkan volume transaksi 24 jam._\n\n` +
     `⚡ [RadarView — pantau live di sini](https://radar-harian-crypto.vercel.app/)`
