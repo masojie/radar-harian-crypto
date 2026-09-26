@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCoinPrice } from "@/lib/indodax";
 import { buildCoinPriceMessage } from "@/lib/format";
 import { sendTelegramMessage } from "@/lib/telegram";
-import { analyzeMultiTimeframe, MultiTimeframeSignal, calculateSpotLevels, SpotPositionLevels, scanBullishCoins, ScanResult } from "@/lib/indodax";
+import { analyzeMultiTimeframe, MultiTimeframeSignal, calculateSpotLevels, SpotPositionLevels, scanBullishCoins, ScanResult, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels, findNearestSupportLevels } from "@/lib/indodax";
 
 // Bentuk minimal dari update yang dikirim Telegram ke webhook kita.
 // Telegram sebenarnya kirim lebih banyak field, tapi kita cuma butuh ini.
@@ -120,6 +120,37 @@ async function buildMultiTimeframeMessage(result: MultiTimeframeSignal): Promise
       "\u26a0\ufe0f *Ini SPOT, bukan futures* - sinyal SELL berarti: kalau kamu SUDAH PEGANG coin ini, pertimbangkan exit/jual sekarang. Ini BUKAN ajakan buka posisi jual baru untuk yang belum punya coinnya.",
       ""
     );
+  }
+
+  // Support & Resistance mingguan - level besar dari struktur candle
+  // 1 tahun terakhir, sudah terbukti dipantulkan berkali-kali (bukan
+  // cuma persentase tetap dari harga sekarang).
+  try {
+    const weeklyCandles = await getWeeklyCandlesFull(result.symbol);
+    const srLevels = detectSupportResistanceLevels(weeklyCandles, result.currentPrice);
+    const nearestResistance = findNearestResistanceLevels(srLevels, result.currentPrice, 1);
+    const nearestSupport = findNearestSupportLevels(srLevels, result.currentPrice, 1);
+
+    if (nearestResistance.length > 0 || nearestSupport.length > 0) {
+      lines.push("\ud83d\udccc *Support & Resistance (mingguan):*");
+      if (nearestResistance.length > 0) {
+        const r = nearestResistance[0];
+        const pct = ((r.price - result.currentPrice) / result.currentPrice) * 100;
+        lines.push(`\ud83d\udd34 Resistance: Rp ${formatRupiah(r.price)}`);
+        lines.push(`   +${pct.toFixed(1)}% \u00b7 ${r.touches}x sentuh`);
+      }
+      if (nearestSupport.length > 0) {
+        const s = nearestSupport[0];
+        const pct = ((s.price - result.currentPrice) / result.currentPrice) * 100;
+        lines.push(`\ud83d\udfe2 Support: Rp ${formatRupiah(s.price)}`);
+        lines.push(`   ${pct.toFixed(1)}% \u00b7 ${s.touches}x sentuh`);
+      }
+      lines.push("");
+      lines.push("\ud83d\udfe9 EMA naik / RSI oversold \u00b7 \ud83d\udfe5 sebaliknya");
+      lines.push("");
+    }
+  } catch (e) {
+    // Kalau gagal ambil data mingguan, skip blok ini tanpa gagalkan seluruh pesan.
   }
 
   lines.push(
