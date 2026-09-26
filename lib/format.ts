@@ -65,7 +65,7 @@ export function buildRadarMessage(coins: TopCoin[]): string {
   });
 
   return (
-    `🔥 *Radar Harian Crypto*\n` +
+    `🔥 *RADAR HARIAN CRYPTO*\n` +
     `Top ${coins.length} Volume Indodax\n\n` +
     `🕐 ${waktuJakarta} WIB\n\n` +
     lines.join("\n\n") +
