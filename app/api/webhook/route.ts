@@ -50,7 +50,8 @@ async function buildMultiTimeframeMessage(result: MultiTimeframeSignal): Promise
   lines.push(`Harga saat ini: Rp ${formatRupiah(result.currentPrice)}`);
 
   try {
-    const coinInfo = await getCoinPrice(result.symbol);
+    const coinSymbolOnly = result.symbol.replace(/IDR$/i, "");
+    const coinInfo = await getCoinPrice(coinSymbolOnly);
     if (coinInfo) {
       lines.push(`Volume 24 Jam: ${formatVolumeSingkat(coinInfo.volumeIdr)}\n`);
     } else {
