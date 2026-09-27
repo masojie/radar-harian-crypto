@@ -76,6 +76,8 @@ export interface SignalOutcomeRow {
   closed_at: string | null;
   /** Batas waktu posisi (24 jam sejak sinyal). Nama kolom di DB: expires_at. */
   expires_at: string;
+  /** Volume transaksi 24 jam (IDR) saat sinyal masuk. NULL untuk sinyal lama sebelum kolom ini ada. */
+  volume_at_signal: number | null;
 }
 
 /** Sinyal bullish terbaru Ã¢ÂÂ jadi feed "Radar Live". */
