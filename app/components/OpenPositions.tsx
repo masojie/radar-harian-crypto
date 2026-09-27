@@ -3,12 +3,94 @@
 import { useState } from "react";
 import type { SignalOutcomeRow } from "@/lib/supabase-public";
 import { distancePct, formatIDR, formatPct, pctTone, timeAgo } from "@/lib/format-dashboard";
+import { useLongPress } from "@/lib/useLongPress";
 import RangeBar from "./RangeBar";
 import SignalDetail from "./SignalDetail";
 
 interface Props {
   positions: SignalOutcomeRow[];
   latestPrices: Map<string, number>;
+}
+
+interface RowData {
+  p: SignalOutcomeRow;
+  current: number | null;
+  change: number | null;
+}
+
+function PositionCard({ p, current, change, onOpen }: RowData & { onOpen: (p: SignalOutcomeRow) => void }) {
+  const { pressing, progress, handlers } = useLongPress(() => onOpen(p));
+
+  const toTp1 = current !== null ? distancePct(current, p.tp1_price) : null;
+  const toSl = current !== null ? distancePct(current, p.sl_wide_price) : null;
+  // Harga bisa sudah melewati level sebelum pengecek hasil menutup posisinya
+  const pastTp1 = current !== null && current >= p.tp1_price;
+  const pastSl = current !== null && current <= p.sl_wide_price;
+
+  return (
+    <article
+      className={`pos pos-clickable${pressing ? " pos-pressing" : ""}`}
+      role="button"
+      tabIndex={0}
+      aria-label={`Tahan untuk lihat detail sinyal ${p.symbol}`}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") onOpen(p);
+      }}
+      {...handlers}
+    >
+      {pressing && (
+        <svg className="press-ring" viewBox="0 0 32 32" aria-hidden="true">
+          <circle cx="16" cy="16" r="14" className="press-ring-track" />
+          <circle
+            cx="16"
+            cy="16"
+            r="14"
+            className="press-ring-fill"
+            style={{ strokeDashoffset: 2 * Math.PI * 14 * (1 - progress) }}
+          />
+        </svg>
+      )}
+      <header className="pos-head">
+        <div>
+          <h3 className="pos-symbol">{p.symbol}</h3>
+          <p className="pos-sub">
+            Entry <span className="num">Rp{formatIDR(p.entry_price)}</span>, dibuka{" "}
+            {timeAgo(p.signaled_at)}
+          </p>
+        </div>
+        <p className={`pos-pnl num tone-${pctTone(change)}`}>
+          {change !== null ? formatPct(change) : "-"}
+        </p>
+      </header>
+
+      <RangeBar
+        sl={p.sl_wide_price}
+        entry={p.entry_price}
+        tp1={p.tp1_price}
+        tp2={p.tp2_price}
+        current={current}
+      />
+
+      <dl className="pos-foot">
+        <div>
+          <dt>Harga kini</dt>
+          <dd className="num">{current !== null ? `Rp${formatIDR(current)}` : "-"}</dd>
+        </div>
+        <div>
+          <dt>Ke TP1</dt>
+          <dd className="num tone-up">
+            {pastTp1 ? "Tercapai" : toTp1 !== null ? formatPct(toTp1) : "-"}
+          </dd>
+        </div>
+        <div>
+          <dt>Ke SL</dt>
+          <dd className="num tone-down">
+            {pastSl ? "Tertembus" : toSl !== null ? formatPct(toSl) : "-"}
+          </dd>
+        </div>
+      </dl>
+    </article>
+  );
 }
 
 export default function OpenPositions({ positions, latestPrices }: Props) {
@@ -65,67 +147,9 @@ export default function OpenPositions({ positions, latestPrices }: Props) {
       </dl>
 
       <div className="pos-grid">
-        {rows.map(({ p, current, change }) => {
-          const toTp1 = current !== null ? distancePct(current, p.tp1_price) : null;
-          const toSl = current !== null ? distancePct(current, p.sl_wide_price) : null;
-          // Harga bisa sudah melewati level sebelum pengecek hasil menutup posisinya
-          const pastTp1 = current !== null && current >= p.tp1_price;
-          const pastSl = current !== null && current <= p.sl_wide_price;
-
-          return (
-            <article
-              key={p.id}
-              className="pos pos-clickable"
-              onClick={() => setSelected(p)}
-              role="button"
-              tabIndex={0}
-              aria-label={`Lihat detail sinyal ${p.symbol}`}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") setSelected(p);
-              }}
-            >
-              <header className="pos-head">
-                <div>
-                  <h3 className="pos-symbol">{p.symbol}</h3>
-                  <p className="pos-sub">
-                    Entry <span className="num">Rp{formatIDR(p.entry_price)}</span>, dibuka{" "}
-                    {timeAgo(p.signaled_at)}
-                  </p>
-                </div>
-                <p className={`pos-pnl num tone-${pctTone(change)}`}>
-                  {change !== null ? formatPct(change) : "-"}
-                </p>
-              </header>
-
-              <RangeBar
-                sl={p.sl_wide_price}
-                entry={p.entry_price}
-                tp1={p.tp1_price}
-                tp2={p.tp2_price}
-                current={current}
-              />
-
-              <dl className="pos-foot">
-                <div>
-                  <dt>Harga kini</dt>
-                  <dd className="num">{current !== null ? `Rp${formatIDR(current)}` : "-"}</dd>
-                </div>
-                <div>
-                  <dt>Ke TP1</dt>
-                  <dd className="num tone-up">
-                    {pastTp1 ? "Tercapai" : toTp1 !== null ? formatPct(toTp1) : "-"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Ke SL</dt>
-                  <dd className="num tone-down">
-                    {pastSl ? "Tertembus" : toSl !== null ? formatPct(toSl) : "-"}
-                  </dd>
-                </div>
-              </dl>
-            </article>
-          );
-        })}
+        {rows.map((row) => (
+          <PositionCard key={row.p.id} {...row} onOpen={setSelected} />
+        ))}
       </div>
 
       {selected && <SignalDetail signal={selected} onClose={() => setSelected(null)} />}
