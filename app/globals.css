@@ -845,13 +845,14 @@ button {
 
 .pos-clickable {
   cursor: pointer;
-  transition: border-color 0.15s ease, transform 0.15s ease;
+  transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s;
 }
 
 .pos-clickable:hover,
 .pos-clickable:focus-visible {
   border-color: var(--ink-faint);
   transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .pos-clickable:active {
