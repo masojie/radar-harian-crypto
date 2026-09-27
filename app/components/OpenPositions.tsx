@@ -1,6 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import type { SignalOutcomeRow } from "@/lib/supabase-public";
 import { distancePct, formatIDR, formatPct, pctTone, timeAgo } from "@/lib/format-dashboard";
 import RangeBar from "./RangeBar";
+import SignalDetail from "./SignalDetail";
 
 interface Props {
   positions: SignalOutcomeRow[];
@@ -8,6 +12,7 @@ interface Props {
 }
 
 export default function OpenPositions({ positions, latestPrices }: Props) {
+  const [selected, setSelected] = useState<SignalOutcomeRow | null>(null);
   if (positions.length === 0) {
     return (
       <div className="empty">
@@ -68,7 +73,17 @@ export default function OpenPositions({ positions, latestPrices }: Props) {
           const pastSl = current !== null && current <= p.sl_wide_price;
 
           return (
-            <article key={p.id} className="pos">
+            <article
+              key={p.id}
+              className="pos pos-clickable"
+              onClick={() => setSelected(p)}
+              role="button"
+              tabIndex={0}
+              aria-label={`Lihat detail sinyal ${p.symbol}`}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") setSelected(p);
+              }}
+            >
               <header className="pos-head">
                 <div>
                   <h3 className="pos-symbol">{p.symbol}</h3>
@@ -112,6 +127,8 @@ export default function OpenPositions({ positions, latestPrices }: Props) {
           );
         })}
       </div>
+
+      {selected && <SignalDetail signal={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }
