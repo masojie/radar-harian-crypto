@@ -1780,3 +1780,156 @@ button {
   border-radius: 4px;
 }
 
+
+/* ==========================================================
+   MODAL DETAIL SINYAL \u2014 VERSI RIWAYAT (grid, bukan rail)
+   ========================================================== */
+
+.modal-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.modal-stat-box {
+  background: var(--bg-inset);
+  border-radius: var(--r-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal-stat-label {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.modal-stat-value {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.level-table {
+  margin-bottom: 14px;
+}
+
+.level-table-row {
+  display: grid;
+  grid-template-columns: 52px 68px 40px 1fr 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.level-table-row:last-child {
+  border-bottom: 0;
+}
+
+.level-table-entry {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.level-table-row-hit {
+  opacity: 1;
+}
+
+.level-table-row:not(.level-table-row-hit):not(.level-table-entry) {
+  opacity: 0.6;
+}
+
+.level-table-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-inset);
+  color: var(--ink-dim);
+  width: fit-content;
+}
+
+.level-table-badge-up { color: var(--up); }
+.level-table-badge-warn { color: var(--warn); }
+.level-table-badge-down { color: var(--down); }
+
+.level-table-price {
+  font-weight: 600;
+}
+
+.level-table-pct {
+  text-align: right;
+}
+
+.level-table-bar-wrap {
+  display: block;
+  height: 4px;
+  background: var(--bg-inset);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.level-table-bar {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+}
+
+.level-table-bar-up { background: var(--up); }
+.level-table-bar-warn { background: var(--warn); }
+.level-table-bar-down { background: var(--down); }
+
+.level-table-status {
+  font-size: 11px;
+  font-weight: 600;
+  text-align: right;
+  color: var(--ink-dim);
+}
+
+.modal-outcomes-block {
+  margin-top: 4px;
+}
+
+.modal-outcomes-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 10px;
+}
+
+.modal-outcome-box {
+  background: var(--bg-inset);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.modal-outcome-box:last-child {
+  margin-bottom: 0;
+}
+
+.modal-outcome-box-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 4px;
+}
+
+.modal-outcome-box-value {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}

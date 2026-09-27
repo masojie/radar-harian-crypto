@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { SignalOutcomeRow } from "@/lib/supabase-public";
 import { formatIDR, formatNumber, formatPct, pctTone, timeAgo } from "@/lib/format-dashboard";
 import Sparkline from "./Sparkline";
-import SignalDetail from "./SignalDetail";
+import HistorySignalDetail from "./HistorySignalDetail";
 
 type OutcomeTone = "up" | "down" | "warn" | "flat";
 
@@ -174,7 +174,7 @@ export default function HistoryStats({ signals }: { signals: SignalOutcomeRow[] 
       </div>
 
       {selectedSignal && (
-        <SignalDetail
+        <HistorySignalDetail
           signal={selectedSignal}
           onClose={() => setSelectedSignal(null)}
         />
