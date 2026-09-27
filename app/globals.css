@@ -1507,7 +1507,6 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s;
   flex: none;
 }
 
@@ -1516,32 +1515,45 @@ button {
   color: #fff;
 }
 
-.modal-info-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.modal-info-item {
-  background: var(--bg-inset);
-  border-radius: var(--r-md);
-  padding: 10px;
-  text-align: center;
-}
-
-.modal-info-label {
-  display: block;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--ink-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+.modal-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   margin-bottom: 4px;
 }
 
-.modal-info-value {
-  font-size: 15px;
+.modal-hero-label {
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.modal-hero-value {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+
+.modal-meta-row {
+  display: flex;
+  gap: 18px;
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.modal-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.modal-meta-label {
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.modal-meta-value {
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -1550,118 +1562,133 @@ button {
 }
 
 .modal-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 14px;
   font-weight: 600;
   color: var(--ink);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
-/* Level Bars */
-.modal-entry-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px dashed var(--line);
-  padding-bottom: 8px;
-  margin-bottom: 10px;
+/* Price rail: one shared vertical scale from TP3 down to SL -5%.
+   The gutter's dots mark true proportional distance from entry;
+   the rows stay in normal document flow so they never overlap,
+   whatever the price gaps between levels happen to be. */
+.rail-wrap {
+  position: relative;
+  padding-left: 20px;
+  margin-bottom: 14px;
 }
 
-.entry-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--ink-dim);
-  text-transform: uppercase;
+.rail-gutter {
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  bottom: 2px;
+  width: 12px;
 }
 
-.entry-value {
-  font-size: 13px;
-  font-weight: 600;
+.rail-gutter-line {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
 }
 
-.level-row {
+.rail-tick {
+  position: absolute;
+  left: -2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  transform: translateY(-50%);
+}
+
+.rail-tick-entry {
+  left: -3px;
+  width: 7px;
+  height: 7px;
+  background: var(--ink);
+  box-shadow: 0 0 0 3px var(--bg-raised);
+  z-index: 1;
+}
+
+.rail-tick-hit.rail-tick-up { background: var(--up); }
+.rail-tick-hit.rail-tick-warn { background: var(--warn); }
+.rail-tick-hit.rail-tick-down { background: var(--down); }
+
+.rail-row {
   display: grid;
-  grid-template-columns: 48px 100px 42px 1fr 24px;
+  grid-template-columns: 38px 1fr 38px 40px;
   align-items: center;
-  gap: 8px;
-  padding: 6px 0;
+  gap: 6px;
+  padding: 5px 0;
   font-size: 12px;
   opacity: 0.5;
-  transition: opacity 0.15s;
 }
 
-.level-row.level-hit {
+.rail-row-hit,
+.rail-row-entry {
   opacity: 1;
 }
 
-.level-badge {
-  font-size: 10px;
+.rail-row-entry {
   font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 3px;
-  text-align: center;
+  color: var(--ink);
 }
 
-.level-up { background: var(--up-bg); color: var(--up); }
-.level-warn { background: var(--warn-bg); color: var(--warn); }
-.level-down { background: var(--down-bg); color: var(--down); }
-
-.level-price {
-  font-weight: 600;
-}
-
-.level-pct {
-  font-weight: 600;
+.rail-label {
   font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-dim);
 }
 
-.level-bar-track {
-  height: 5px;
-  background: var(--bg-inset);
-  border-radius: 3px;
-  overflow: hidden;
+.rail-row-hit .rail-label-up { color: var(--up); }
+.rail-row-hit .rail-label-warn { color: var(--warn); }
+.rail-row-hit .rail-label-down { color: var(--down); }
+
+.rail-price {
+  font-weight: 600;
 }
 
-.level-bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.4s ease;
+.rail-pct {
+  font-size: 11px;
+  text-align: right;
 }
 
-.level-fill-up { background: var(--up); }
-.level-fill-warn { background: var(--warn); }
-.level-fill-down { background: var(--down); }
-
-.level-status {
-  text-align: center;
-  font-size: 14px;
+.rail-status {
+  font-size: 11px;
+  font-weight: 600;
+  text-align: right;
+  color: var(--ink-dim);
 }
 
-/* Outcomes */
+/* Outcomes: folded under the same rail, plain rows like the
+   timestamp block below rather than a second set of stat cards. */
 .modal-outcomes {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line);
+  font-size: 12.5px;
 }
 
-.modal-outcome-card {
-  background: var(--bg-inset);
-  border-radius: var(--r-md);
-  padding: 10px;
-  text-align: center;
+.modal-outcomes p {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.modal-outcomes p:last-child {
+  margin-bottom: 0;
 }
 
 .modal-outcome-label {
-  display: block;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--ink-dim);
-  text-transform: uppercase;
-  margin-bottom: 4px;
-}
-
-.modal-outcome-value {
-  font-size: 14px;
-  font-weight: 600;
+  color: var(--ink-faint);
 }
 
 /* Range bar */
@@ -1753,19 +1780,3 @@ button {
   border-radius: 4px;
 }
 
-/* Responsive */
-@media (max-width: 640px) {
-  .modal-info-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .level-row {
-    grid-template-columns: 40px 90px 36px 1fr 20px;
-    gap: 6px;
-    font-size: 11px;
-  }
-
-  .modal-outcomes {
-    grid-template-columns: 1fr;
-  }
-}

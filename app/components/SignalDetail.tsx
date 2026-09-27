@@ -44,15 +44,6 @@ function IconLevels() {
   );
 }
 
-function IconOutcome() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="section-icon" aria-hidden="true">
-      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
-      <circle cx="8" cy="8" r="2.5" fill="currentColor" />
-    </svg>
-  );
-}
-
 function IconRange() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="section-icon" aria-hidden="true">
@@ -67,28 +58,8 @@ interface LevelRow {
   label: string;
   price: number;
   hit: boolean;
-  tone: "up" | "down" | "warn" | "flat";
+  tone: "up" | "warn" | "down";
   pct: number;
-}
-
-function LevelBar({ row, entry, maxPrice }: { row: LevelRow; entry: number; maxPrice: number }) {
-  const range = Math.max(maxPrice - entry, entry - row.price, 1);
-  const fillPct = Math.min(100, Math.abs((entry - row.price) / range) * 100);
-  return (
-    <div className={`level-row ${row.hit ? "level-hit" : ""}`}>
-      <span className={`level-badge level-${row.tone}`}>{row.label}</span>
-      <span className="level-price">Rp{formatIDR(row.price)}</span>
-      <span className={`level-pct num tone-${row.pct > 0 ? "up" : row.pct < 0 ? "down" : "flat"}`}>
-        {row.pct > 0 ? "+" : ""}{row.pct.toFixed(0)}%
-      </span>
-      <div className="level-bar-track">
-        <div className={`level-bar-fill level-fill-${row.tone}`} style={{ width: `${fillPct}%` }} />
-      </div>
-      <span className={`level-status level-status-${row.tone} ${row.hit ? "" : "level-status-miss"}`}>
-        {row.hit ? "HIT" : "\u2014"}
-      </span>
-    </div>
-  );
 }
 
 function checkHit(price: number, high: number, low: number, isSL: boolean): boolean {
@@ -116,10 +87,17 @@ export default function SignalDetail({
     { label: "SL -5%", price: signal.sl_wide_price, hit: checkHit(signal.sl_wide_price, high, low, true), tone: "down", pct: -5 },
   ];
 
-  const activeLevels = [
-    ...levels.filter((l) => l.pct > 0).reverse(),
-    ...levels.filter((l) => l.pct < 0),
-  ];
+  // One shared vertical scale, TP3 at the top to SL -5% at the bottom, so the
+  // gutter dots show every level's real proportional distance from entry.
+  const railTop = Math.max(signal.tp3_price, entry);
+  const railBottom = Math.min(signal.sl_wide_price, entry);
+  const railSpan = Math.max(railTop - railBottom, 1);
+  const railPos = (price: number) => Math.min(100, Math.max(0, ((railTop - price) / railSpan) * 100));
+
+  const rows = [
+    ...levels.map((l) => ({ ...l, kind: "level" as const, key: l.label })),
+    { kind: "entry" as const, key: "entry", label: "Entry", price: entry },
+  ].sort((a, b) => b.price - a.price);
 
   return (
     <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label={`Detail sinyal ${signal.symbol}`}>
@@ -136,62 +114,92 @@ export default function SignalDetail({
           </button>
         </div>
 
-        <div className="modal-info-grid">
-          <div className="modal-info-item">
-            <span className="modal-info-label">Entry</span>
-            <span className="modal-info-value num">Rp{formatIDR(entry)}</span>
-          </div>
-          <div className="modal-info-item">
-            <span className="modal-info-label">RSI saat sinyal</span>
-            <span className={`modal-info-value num ${signal.rsi_at_signal <= 25 ? "tone-down" : signal.rsi_at_signal <= 40 ? "tone-warn" : ""}`}>
+        <div className="modal-hero">
+          <span className="modal-hero-label">Entry</span>
+          <span className="modal-hero-value num">Rp{formatIDR(entry)}</span>
+        </div>
+        <div className="modal-meta-row">
+          <span className="modal-meta-item">
+            <span className="modal-meta-label">RSI saat sinyal</span>
+            <span className={`modal-meta-value num ${signal.rsi_at_signal <= 25 ? "tone-down" : signal.rsi_at_signal <= 40 ? "tone-warn" : ""}`}>
               {formatNumber(signal.rsi_at_signal, 1)}
             </span>
-          </div>
-          <div className="modal-info-item">
-            <span className="modal-info-label">Durasi</span>
-            <span className="modal-info-value">{duration(signal)}</span>
-          </div>
-          <div className="modal-info-item">
-            <span className="modal-info-label">Volume saat sinyal</span>
-            <span className="modal-info-value num">
+          </span>
+          <span className="modal-meta-item">
+            <span className="modal-meta-label">Durasi</span>
+            <span className="modal-meta-value">{duration(signal)}</span>
+          </span>
+          <span className="modal-meta-item">
+            <span className="modal-meta-label">Volume saat sinyal</span>
+            <span className="modal-meta-value num">
               {signal.volume_at_signal !== null ? `Rp${formatIDR(signal.volume_at_signal)}` : "Tidak tersedia"}
             </span>
-          </div>
+          </span>
         </div>
 
         <div className="modal-section">
-          <h3 className="modal-section-title"><IconLevels /> Level Harga</h3>
-          <div className="modal-entry-line">
-            <span className="entry-label">Entry</span>
-            <span className="entry-value num">Rp{formatIDR(entry)}</span>
-          </div>
-          {activeLevels.map((l) => (
-            <LevelBar key={l.label} row={l} entry={entry} maxPrice={Math.max(signal.tp3_price, high)} />
-          ))}
-        </div>
+          <h3 className="modal-section-title"><IconLevels /> Level harga</h3>
 
-        <div className="modal-section">
-          <h3 className="modal-section-title"><IconOutcome /> Hasil</h3>
+          <div className="rail-wrap">
+            <div className="rail-gutter">
+              <div className="rail-gutter-line" />
+              {rows.map((r) =>
+                r.kind === "entry" ? (
+                  <span key={r.key} className="rail-tick rail-tick-entry" style={{ top: `${railPos(r.price)}%` }} />
+                ) : (
+                  <span
+                    key={r.key}
+                    className={`rail-tick ${r.hit ? `rail-tick-hit rail-tick-${r.tone}` : ""}`}
+                    style={{ top: `${railPos(r.price)}%` }}
+                  />
+                )
+              )}
+            </div>
+            <div>
+              {rows.map((r) =>
+                r.kind === "entry" ? (
+                  <div key={r.key} className="rail-row rail-row-entry">
+                    <span className="rail-label">Entry</span>
+                    <span className="rail-price num">Rp{formatIDR(r.price)}</span>
+                    <span className="rail-pct" />
+                    <span className="rail-status" />
+                  </div>
+                ) : (
+                  <div key={r.key} className={`rail-row ${r.hit ? "rail-row-hit" : ""}`}>
+                    <span className={`rail-label ${r.hit ? `rail-label-${r.tone}` : ""}`}>{r.label}</span>
+                    <span className="rail-price num">Rp{formatIDR(r.price)}</span>
+                    <span className={`rail-pct num tone-${r.pct > 0 ? "up" : "down"}`}>
+                      {r.pct > 0 ? "+" : ""}{r.pct}%
+                    </span>
+                    <span className="rail-status">{r.hit ? "Kena" : ""}</span>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+
           <div className="modal-outcomes">
-            <div className="modal-outcome-card">
-              <span className="modal-outcome-label">SL Ketat (-3%)</span>
-              <span className={`modal-outcome-value num tone-${pctTone(signal.pnl_tight_pct)}`}>
-                {signal.outcome_tight ? outcomeLabel(signal.outcome_tight) : "-"}
-                {signal.pnl_tight_pct !== null && ` (${formatPct(signal.pnl_tight_pct)})`}
+            <p>
+              <span className="modal-outcome-label">SL ketat (-3%)</span>
+              <span className={`num tone-${pctTone(signal.pnl_tight_pct)}`}>
+                {signal.outcome_tight
+                  ? `${outcomeLabel(signal.outcome_tight)}${signal.pnl_tight_pct !== null ? ` (${formatPct(signal.pnl_tight_pct)})` : ""}`
+                  : "Masih berjalan"}
               </span>
-            </div>
-            <div className="modal-outcome-card">
-              <span className="modal-outcome-label">SL Lebar (-5%)</span>
-              <span className={`modal-outcome-value num tone-${pctTone(signal.pnl_wide_pct)}`}>
-                {signal.outcome_wide ? outcomeLabel(signal.outcome_wide) : "-"}
-                {signal.pnl_wide_pct !== null && ` (${formatPct(signal.pnl_wide_pct)})`}
+            </p>
+            <p>
+              <span className="modal-outcome-label">SL lebar (-5%)</span>
+              <span className={`num tone-${pctTone(signal.pnl_wide_pct)}`}>
+                {signal.outcome_wide
+                  ? `${outcomeLabel(signal.outcome_wide)}${signal.pnl_wide_pct !== null ? ` (${formatPct(signal.pnl_wide_pct)})` : ""}`
+                  : "Masih berjalan"}
               </span>
-            </div>
+            </p>
           </div>
         </div>
 
         <div className="modal-section">
-          <h3 className="modal-section-title"><IconRange /> Range Harga</h3>
+          <h3 className="modal-section-title"><IconRange /> Range harga</h3>
           <div className="modal-range-labels">
             <span className="num">Rp{formatIDR(low)}</span>
             <span className="num">Rp{formatIDR(high)}</span>
