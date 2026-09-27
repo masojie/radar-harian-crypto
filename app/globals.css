@@ -845,7 +845,6 @@ button {
 
 .pos-clickable {
   cursor: pointer;
-  transition: background 0.1s;
 }
 
 .pos-clickable:hover,
