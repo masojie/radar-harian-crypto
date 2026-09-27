@@ -842,6 +842,21 @@ button {
   box-shadow: var(--shadow-card);
 }
 
+.pos-clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.pos-clickable:hover,
+.pos-clickable:focus-visible {
+  border-color: var(--ink-faint);
+  transform: translateY(-1px);
+}
+
+.pos-clickable:active {
+  transform: translateY(0);
+}
+
 .pos-head {
   display: flex;
   align-items: flex-start;
