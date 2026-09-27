@@ -43,6 +43,8 @@ export interface OpenSignalGateInput {
   tp2Touches?: number;
   supportRes?: number;
   supportTouches?: number;
+  /** Volume transaksi 24 jam (IDR) coin ini saat sinyal dievaluasi. */
+  volumeIdr?: number;
 }
 
 export interface GateResult {
@@ -87,6 +89,7 @@ export async function openSignalViaGate(
     p_tp2_touches: input.tp2Touches ?? null,
     p_support_res: input.supportRes ?? null,
     p_support_touches: input.supportTouches ?? null,
+    p_volume_idr: input.volumeIdr ?? null,
   });
 
   if (error) {
