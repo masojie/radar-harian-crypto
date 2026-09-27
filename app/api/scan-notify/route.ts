@@ -83,7 +83,7 @@ export async function GET(request: Request) {
           });
 
           msg += "\nDitemukan " + bullish.length + " coin bullish. TP1/TP2 dari level resistance historis, Entry dari level support historis (candle mingguan, minimal 3x disentuh). Untuk detail lengkap salah satu, ketik /analisa <coin> di chat bot.\n";
-          msg += "Ini deteksi momentum yang SUDAH mulai bergerak, bukan prediksi masa depan.\n\n⚡ [RadarView — pantau live di sini](https://radar-harian-crypto.vercel.app)";
+          msg += "Ini deteksi momentum yang SUDAH mulai bergerak, bukan prediksi masa depan.\n\n⚡ RadarView — [pantau live di sini](https://radar-harian-crypto.vercel.app)";
           await sendTelegramMessage(msg);
           break;
         }
