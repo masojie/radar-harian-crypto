@@ -1426,23 +1426,12 @@ button {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: rgba(0, 0, 0, 0);
+  background: rgba(0, 0, 0, 0.65);
   display: flex;
   align-items: flex-start;
   justify-content: center;
   padding: 20px;
   overflow-y: auto;
-  animation: fadeIn 0.2s ease forwards;
-}
-
-@keyframes fadeIn {
-  from { background: rgba(0, 0, 0, 0); }
-  to { background: rgba(0, 0, 0, 0.65); }
-}
-
-@keyframes slideUp {
-  from { transform: translateY(16px); }
-  to { transform: none; }
 }
 
 .modal-panel {
@@ -1453,7 +1442,6 @@ button {
   width: 100%;
   padding: 24px;
   margin-top: 40px;
-  animation: slideUp 0.25s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 .modal-header {
