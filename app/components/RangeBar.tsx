@@ -51,6 +51,7 @@ export default function RangeBar({ sl, entry, tp1, tp2, current }: RangeBarProps
         )}
         <span className="range-tick" style={{ left: `${tp1Pos}%` }} />
         <span className="range-tick range-tick-entry" style={{ left: `${entryPos}%` }} />
+        <span className="range-tick" style={{ left: "100%" }} />
         {nowPos !== null && (
           <span className={`range-now range-now-${tone}`} style={{ left: `${nowPos}%` }} />
         )}
