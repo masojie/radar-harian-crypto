@@ -65,6 +65,7 @@ export async function GET(request: Request) {
           rank: i + 1,
           tp1Res, tp1Touches, tp2Res, tp2Touches,
           supportRes, supportTouches,
+          volumeIdr: coin.volumeIdr,
         });
 
         if (gate.broadcasted) {
