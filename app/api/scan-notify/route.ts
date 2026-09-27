@@ -71,8 +71,8 @@ export async function GET(request: Request) {
           const f = (v: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
           let msg = "🚨 *SCAN OTOMATIS - Momentum Bullish Terdeteksi*\n\n";
           msg += "1. 🟢 " + coin.symbol + " - RSI " + coin.rsi.toFixed(1) + " - " + f(coin.price) + "\n";
-          if (resistances.length >= 2) msg += "   TP1 (resistance terdekat): " + f(resistances[0].price) + " (" + resistances[0].touches + "x disentuh)\n   TP2 (resistance berikutnya): " + f(resistances[1].price) + " (" + resistances[1].touches + "x disentuh)\n";
-          if (supports.length >= 1) msg += "   Entry (support terdekat): " + f(supports[0].price) + " (" + supports[0].touches + "x disentuh)\n";
+          if (resistances.length >= 2) msg += "   TP1 (resistance terdekat):\n   " + f(resistances[0].price) + " (" + resistances[0].touches + "x disentuh)\n\n   TP2 (resistance berikutnya):\n   " + f(resistances[1].price) + " (" + resistances[1].touches + "x disentuh)\n\n";
+          if (supports.length >= 1) msg += "   Entry (support terdekat):\n   " + f(supports[0].price) + " (" + supports[0].touches + "x disentuh)\n\n";
 
           // Kandidat lain buat konteks doang (tanpa TP/Entry, biar gak
           // ketuker sama level punya coin yang benar-benar disiarkan di
