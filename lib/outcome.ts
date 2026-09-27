@@ -277,11 +277,21 @@ export async function checkOpenOutcomes(): Promise<{
 
       if (r.allClosed) {
         const closeSec = Math.max(r.closedAtTight ?? 0, r.closedAtWide ?? 0) || nowSec;
+        // BUG LAMA: SL dicek duluan, jadi kalau SL ketat kena tapi
+        // kemudian harga naik dan SL lebar malah kena TP, status yang
+        // tersimpan tetap "sl_tight" - label menyesatkan walau
+        // outcome_tight & outcome_wide sendiri (yang dipakai UI) sudah
+        // benar independen. TP sekarang dicek DULU: kalau salah satu
+        // sisi (ketat/lebar) profit, status ikut sisi yang profit itu.
+        // SL cuma jadi status kalau DUA-DUANYA sl. Timeout paling akhir.
+        const isTp = (o: Outcome) => o === "tp1" || o === "tp2" || o === "tp3";
         update.status =
-          r.outcomeTight === "sl" ? "sl_tight"
+          isTp(r.outcomeWide) ? r.outcomeWide
+          : isTp(r.outcomeTight) ? r.outcomeTight
+          : r.outcomeTight === "sl" && r.outcomeWide === "sl" ? "sl_wide"
+          : r.outcomeTight === "sl" ? "sl_tight"
           : r.outcomeWide === "sl" ? "sl_wide"
-          : r.outcomeTight === "timeout" ? "timeout"
-          : r.outcomeTight;
+          : "timeout";
         update.outcome_tight = r.outcomeTight;
         update.outcome_wide = r.outcomeWide;
         update.pnl_tight_pct = r.pnlTight;

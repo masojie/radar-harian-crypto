@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 
-const PRESS_DURATION_MS = 400;
+const PRESS_DURATION_MS = 250;
 
 /**
  * Long-press detector berbasis Pointer Events (jalan di sentuh & mouse
