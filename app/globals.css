@@ -1740,16 +1740,11 @@ button {
   font-family: inherit;
   color: inherit;
   cursor: pointer;
-  transition: background 0.15s;
   position: relative;
 }
 
 .hist-row-clickable:hover {
   background: rgba(255, 255, 255, 0.03);
-}
-
-.hist-row-pressing {
-  background: rgba(184, 227, 90, 0.06);
 }
 
 .hist-row-clickable:focus-visible {
