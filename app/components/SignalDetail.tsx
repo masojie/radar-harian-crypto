@@ -201,7 +201,7 @@ export default function SignalDetail({
             <div className="modal-range-high" style={{ left: `${((entry - low) / priceSpan) * 100}%`, width: `${((high - entry) / priceSpan) * 100}%` }} />
           </div>
           <p className="modal-range-note">
-            Tertinggi: Rp{formatIDR(high)} \u00b7 Terendah: Rp{formatIDR(low)}
+            Tertinggi: Rp{formatIDR(high)} · Terendah: Rp{formatIDR(low)}
           </p>
         </div>
 
