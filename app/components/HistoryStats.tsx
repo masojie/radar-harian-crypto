@@ -5,7 +5,6 @@ import type { SignalOutcomeRow } from "@/lib/supabase-public";
 import { formatIDR, formatNumber, formatPct, pctTone, timeAgo } from "@/lib/format-dashboard";
 import Sparkline from "./Sparkline";
 import SignalDetail from "./SignalDetail";
-import { useLongPress } from "@/lib/useLongPress";
 
 type OutcomeTone = "up" | "down" | "warn" | "flat";
 
@@ -27,50 +26,6 @@ function outcomeLabel(outcome: string | null): string {
 }
 
 const STRIP_MAX = 40;
-
-function HistoryRow({ signal: s, onOpen }: { signal: SignalOutcomeRow; onOpen: (s: SignalOutcomeRow) => void }) {
-  const { pressing, progress, handlers } = useLongPress(() => onOpen(s));
-  const pnl = s.pnl_wide_pct;
-
-  return (
-    <li>
-      <button
-        className={`hist-row hist-row-clickable${pressing ? " hist-row-pressing" : ""}`}
-        type="button"
-        aria-label={`Tahan untuk lihat detail sinyal ${s.symbol}`}
-        {...handlers}
-      >
-        {pressing && (
-          <svg className="press-ring press-ring-sm" viewBox="0 0 32 32" aria-hidden="true">
-            <circle cx="16" cy="16" r="14" className="press-ring-track" />
-            <circle
-              cx="16"
-              cy="16"
-              r="14"
-              className="press-ring-fill"
-              style={{ strokeDashoffset: 2 * Math.PI * 14 * (1 - progress) }}
-            />
-          </svg>
-        )}
-        <span className={`badge badge-${outcomeTone(s.outcome_wide)}`}>
-          {outcomeLabel(s.outcome_wide)}
-        </span>
-        <div className="hist-main">
-          <p className="hist-symbol">{s.symbol}</p>
-          <p className="hist-sub">
-            Entry <span className="num">Rp{formatIDR(s.entry_price)}</span>
-          </p>
-        </div>
-        <div className="hist-side">
-          <p className={`hist-pnl num tone-${pctTone(pnl)}`}>
-            {pnl !== null ? formatPct(pnl) : "-"}
-          </p>
-          <p className="hist-time">{s.closed_at ? timeAgo(s.closed_at) : "-"}</p>
-        </div>
-      </button>
-    </li>
-  );
-}
 
 export default function HistoryStats({ signals }: { signals: SignalOutcomeRow[] }) {
   const [selectedSignal, setSelectedSignal] = useState<SignalOutcomeRow | null>(null);
@@ -186,9 +141,34 @@ export default function HistoryStats({ signals }: { signals: SignalOutcomeRow[] 
             jadi hasil nyata lebih rendah. Klik baris untuk detail.
           </p>
           <ul className="hist">
-            {signals.map((s) => (
-              <HistoryRow key={s.id} signal={s} onOpen={setSelectedSignal} />
-            ))}
+            {signals.map((s) => {
+              const pnl = s.pnl_wide_pct;
+              return (
+                <li key={s.id}>
+                  <button
+                    className="hist-row hist-row-clickable"
+                    onClick={() => setSelectedSignal(s)}
+                    type="button"
+                  >
+                    <span className={`badge badge-${outcomeTone(s.outcome_wide)}`}>
+                      {outcomeLabel(s.outcome_wide)}
+                    </span>
+                    <div className="hist-main">
+                      <p className="hist-symbol">{s.symbol}</p>
+                      <p className="hist-sub">
+                        Entry <span className="num">Rp{formatIDR(s.entry_price)}</span>
+                      </p>
+                    </div>
+                    <div className="hist-side">
+                      <p className={`hist-pnl num tone-${pctTone(pnl)}`}>
+                        {pnl !== null ? formatPct(pnl) : "-"}
+                      </p>
+                      <p className="hist-time">{s.closed_at ? timeAgo(s.closed_at) : "-"}</p>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </section>
       </div>
