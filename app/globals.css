@@ -845,12 +845,50 @@ button {
 
 .pos-clickable {
   cursor: pointer;
+  position: relative;
 }
 
 .pos-clickable:hover,
 .pos-clickable:focus-visible {
   border-color: var(--ink-faint);
   background: rgba(255, 255, 255, 0.03);
+}
+
+.pos-pressing {
+  border-color: var(--accent-fill);
+  background: rgba(184, 227, 90, 0.06);
+}
+
+/* Cincin progres tahan-klik. Muncul di pojok kanan-atas card selama
+   ditahan, keliling menutup sesuai progress 0-1 dari useLongPress. */
+.press-ring {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 22px;
+  height: 22px;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.press-ring-sm {
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%) rotate(-90deg);
+}
+
+.press-ring-track {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 2.5;
+}
+
+.press-ring-fill {
+  fill: none;
+  stroke: var(--accent-fill);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 87.96; /* 2*pi*14 */
 }
 
 .pos-head {
@@ -1703,10 +1741,15 @@ button {
   color: inherit;
   cursor: pointer;
   transition: background 0.15s;
+  position: relative;
 }
 
 .hist-row-clickable:hover {
   background: rgba(255, 255, 255, 0.03);
+}
+
+.hist-row-pressing {
+  background: rgba(184, 227, 90, 0.06);
 }
 
 .hist-row-clickable:focus-visible {
