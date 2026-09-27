@@ -151,6 +151,12 @@ export default function SignalDetail({
             <span className="modal-info-label">Durasi</span>
             <span className="modal-info-value">{duration(signal)}</span>
           </div>
+          <div className="modal-info-item">
+            <span className="modal-info-label">Volume saat sinyal</span>
+            <span className="modal-info-value num">
+              {signal.volume_at_signal !== null ? `Rp${formatIDR(signal.volume_at_signal)}` : "Tidak tersedia"}
+            </span>
+          </div>
         </div>
 
         <div className="modal-section">
