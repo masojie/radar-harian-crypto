@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { scanBullishCoins, scanNearestToThreshold, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels } from "@/lib/indodax";
+import { scanBullishCoins, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels } from "@/lib/indodax";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { saveBullishScanResults, type BullishScanRow } from "@/lib/supabase";
 import { openSignalViaGate } from "@/lib/outcome";
@@ -13,6 +13,20 @@ export const maxDuration = 60;
 // Sekarang lanjut ke kandidat berikutnya kalau satu gagal, dibatasi
 // MAX_ATTEMPTS supaya durasi request tetap wajar (maxDuration 60 detik).
 const MAX_ATTEMPTS = 15;
+
+// Toleransi buat mencocokkan harga resistance yang DIUSULKAN (sisi
+// TypeScript, dari findNearestResistanceLevels) dengan TP yang BENERAN
+// dipakai gate (gate.tp1/gate.tp2, sisi Postgres, SETELAH lolos validasi
+// try_insert_signal: jarak 1.02x-1.20x harga & minimal 3x disentuh).
+// Kalau beda, artinya gate MENOLAK usulan resistance dan diam-diam
+// fallback ke persentase tetap (+5%/+10%) - label pesan harus ikut
+// angka itu, bukan resistance yang diusulkan tapi ditolak.
+const PRICE_MATCH_TOLERANCE = 0.0001;
+
+function isSameLevel(a: number | undefined, b: number | undefined): boolean {
+  if (a === undefined || b === undefined) return false;
+  return Math.abs(a - b) <= Math.abs(b) * PRICE_MATCH_TOLERANCE;
+}
 
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
@@ -68,11 +82,34 @@ export async function GET(request: Request) {
           volumeIdr: coin.volumeIdr,
         });
 
-        if (gate.broadcasted) {
+        if (gate.broadcasted && gate.tp1 !== undefined && gate.tp2 !== undefined) {
           const f = (v: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
+
+          // PENTING: pesan HARUS pakai gate.tp1/gate.tp2 (angka final yang
+          // beneran tersimpan di signal_outcomes dan dilacak
+          // checkOpenOutcomes), BUKAN resistances[i].price (usulan mentah
+          // sebelum divalidasi try_insert_signal). BUG LAMA: kalau usulan
+          // resistance ditolak gate (jarak gak masuk akal / kurang dari 3x
+          // disentuh), try_insert_signal diam-diam fallback ke fixed
+          // 5%/10%, tapi pesan tetap nampilin angka resistance yang
+          // DITOLAK itu - user baca TP yang gak pernah benar-benar
+          // dilacak/berlaku (kejadian nyata di data: TP1 "+660%" tampil
+          // di pesan padahal yang tersimpan sistem cuma +5%).
+          const tp1FromResistance = isSameLevel(gate.tp1, tp1Res);
+          const tp2FromResistance = isSameLevel(gate.tp2, tp2Res);
+
           let msg = "🚨 *SCAN OTOMATIS - Momentum Bullish Terdeteksi*\n\n";
           msg += "1. 🟢 " + coin.symbol + " - RSI " + coin.rsi.toFixed(1) + " - " + f(coin.price) + "\n";
-          if (resistances.length >= 2) msg += "   TP1 (resistance terdekat):\n   " + f(resistances[0].price) + " (" + resistances[0].touches + "x disentuh)\n\n   TP2 (resistance berikutnya):\n   " + f(resistances[1].price) + " (" + resistances[1].touches + "x disentuh)\n\n";
+          msg +=
+            "   TP1" + (tp1FromResistance ? " (resistance terdekat)" : " (+5% dari entry)") + ":\n   " +
+            f(gate.tp1) +
+            (tp1FromResistance && tp1Touches !== undefined ? " (" + tp1Touches + "x disentuh)" : "") +
+            "\n\n";
+          msg +=
+            "   TP2" + (tp2FromResistance ? " (resistance berikutnya)" : " (+10% dari entry)") + ":\n   " +
+            f(gate.tp2) +
+            (tp2FromResistance && tp2Touches !== undefined ? " (" + tp2Touches + "x disentuh)" : "") +
+            "\n\n";
           if (supports.length >= 1) msg += "   Entry (support terdekat):\n   " + f(supports[0].price) + " (" + supports[0].touches + "x disentuh)\n\n";
 
           // Kandidat lain buat konteks doang (tanpa TP/Entry, biar gak
@@ -83,7 +120,7 @@ export async function GET(request: Request) {
             msg += (k + 2) + ". 🟢 " + c.symbol + " - RSI " + c.rsi.toFixed(1) + " - " + f(c.price) + "\n";
           });
 
-          msg += "\nDitemukan " + bullish.length + " coin bullish. TP1/TP2 dari level resistance historis, Entry dari level support historis (candle mingguan, minimal 3x disentuh). Untuk detail lengkap salah satu, ketik /analisa <coin> di chat bot.\n";
+          msg += "\nDitemukan " + bullish.length + " coin bullish. TP1/TP2 dari level resistance historis kalau tervalidasi (jarak wajar & minimal 3x disentuh), fallback ke +5%/+10% kalau tidak. Entry dari level support historis (candle mingguan, minimal 3x disentuh). Untuk detail lengkap salah satu, ketik /analisa <coin> di chat bot.\n";
           msg += "Ini deteksi momentum yang SUDAH mulai bergerak, bukan prediksi masa depan.\n\n⚡ RadarView — [pantau live di sini](https://radar-harian-crypto.vercel.app)";
           await sendTelegramMessage(msg);
           break;
