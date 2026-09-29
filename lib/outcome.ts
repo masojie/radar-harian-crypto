@@ -55,6 +55,10 @@ export interface GateResult {
   tp3?: number;
   slTight?: number;
   slWide?: number;
+  /** id baris signal_outcomes yang baru dibuat (hanya ada kalau broadcasted). */
+  outcomeId?: number;
+  /** id baris bullish_scans untuk scan ini. */
+  scanId?: number;
 }
 
 /**
@@ -106,6 +110,8 @@ export async function openSignalViaGate(
     tp3?: number;
     sl_tight?: number;
     sl_wide?: number;
+    outcome_id?: number;
+    scan_id?: number;
   };
 
   return {
@@ -116,7 +122,27 @@ export async function openSignalViaGate(
     tp3: r.tp3,
     slTight: r.sl_tight,
     slWide: r.sl_wide,
+    outcomeId: r.outcome_id,
+    scanId: r.scan_id,
   };
+}
+
+/**
+ * Batalkan posisi yang barusan dibuka lewat openSignalViaGate tapi GAGAL
+ * disiarkan ke Telegram. Tanpa ini posisinya jadi "posisi hantu": terbuka
+ * 24 jam tanpa pernah diumumkan, dan ikut mengotori statistik Riwayat.
+ * Cuma menghapus baris yang masih 'open' dengan id itu, dan menandai baris
+ * audit bullish_scans supaya jejaknya tetap ada.
+ */
+export async function cancelUnannouncedSignal(outcomeId?: number, scanId?: number): Promise<void> {
+  if (outcomeId === undefined || outcomeId === null) return;
+  const del = await supabaseAdmin.from("signal_outcomes").delete().eq("id", outcomeId).eq("status", "open");
+  if (del.error) {
+    throw new Error(`Gagal batalkan posisi ${outcomeId}: ${del.error.message}`);
+  }
+  if (scanId !== undefined && scanId !== null) {
+    await supabaseAdmin.from("bullish_scans").update({ tolak_alasan: "gagal_kirim_telegram" }).eq("id", scanId);
+  }
 }
 
 interface SimResult {
