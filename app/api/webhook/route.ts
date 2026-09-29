@@ -4,6 +4,10 @@ import { buildCoinPriceMessage, buildRadarMessage, formatVolumeSingkat } from "@
 import { sendTelegramMessage } from "@/lib/telegram";
 import { analyzeMultiTimeframe, MultiTimeframeSignal, calculateSpotLevels, SpotPositionLevels, scanBullishCoins, ScanResult, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels, findNearestSupportLevels, RSI_OVERSOLD_THRESHOLD, MTF_TOTAL_WEIGHT, MTF_WEIGHTED_THRESHOLD, VOLUME_CONFIRMATION_THRESHOLD, SCAN_MIN_VOLUME_IDR, SCAN_MAX_VOLUME_IDR, SCAN_MAX_COINS, SR_MIN_TOUCHES } from "@/lib/indodax";
 
+// Batas durasi fungsi (detik). /scan memanggil sampai ~120 request candle, jadi
+// dibuat 60 detik (sama seperti scan-notify) biar tidak terpotong timeout default.
+export const maxDuration = 60;
+
 // Bentuk minimal dari update yang dikirim Telegram ke webhook kita.
 // Telegram sebenarnya kirim lebih banyak field, tapi kita cuma butuh ini.
 interface TelegramUpdate {
@@ -34,6 +38,39 @@ async function safeSend(chatId: number, text: string): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Webhook gagal kirim balasan:", message);
+  }
+}
+
+// Simbol coin dari user masuk ke URL Indodax dan ke teks Markdown, jadi dibatasi
+// huruf/angka saja (mis. "a_b" bikin Telegram menolak pesan Markdown).
+const SYMBOL_RE = /^[A-Za-z0-9]{1,12}$/;
+
+// Cache hasil /scan 60 detik: satu /scan = ~120 request candle ke Indodax, jadi
+// spam /scan (atau banyak user sekaligus) tidak boleh menembak ulang terus.
+// Best-effort per instance serverless, cukup buat menahan salah-tekan berulang.
+const SCAN_CACHE_MS = 60_000;
+let scanCache: { at: number; results: ScanResult[] } | null = null;
+
+async function getScanResultsCached(): Promise<ScanResult[]> {
+  const now = Date.now();
+  if (scanCache && now - scanCache.at < SCAN_CACHE_MS) return scanCache.results;
+  const results = await scanBullishCoins();
+  scanCache = { at: now, results };
+  return results;
+}
+
+// Penjelasan yang akurat saat /analisa gagal. Dulu SEMUA error dibilang "coin
+// tidak ditemukan", termasuk Indodax lagi lambat atau Telegram menolak pesan.
+async function explainAnalisaFailure(symbol: string): Promise<string> {
+  const upper = symbol.toUpperCase();
+  try {
+    const coin = await getCoinPrice(symbol);
+    if (!coin) {
+      return `Coin *${upper}* tidak ditemukan di Indodax. Cek lagi penulisannya, contoh: /analisa btc`;
+    }
+    return `Data *${upper}* belum bisa dianalisis sekarang (candle belum cukup atau Indodax sedang lambat). Coba lagi sebentar lagi.`;
+  } catch {
+    return "Gagal ambil data dari Indodax, coba lagi sebentar lagi.";
   }
 }
 
@@ -303,29 +340,32 @@ export async function POST(request: Request) {
     const coinArg = analisaMatch[1];
 
     if (!coinArg) {
-      await sendTelegramMessage(
-        "Pakai format: `/analisa btc` atau `/analisa sol`. Ketik /help untuk panduan lengkap.",
-        String(chatId)
+      await safeSend(
+        chatId,
+        "Pakai format: `/analisa btc` atau `/analisa sol`. Ketik /help untuk panduan lengkap."
       );
+      return NextResponse.json({ ok: true });
+    }
+
+    if (!SYMBOL_RE.test(coinArg)) {
+      await safeSend(chatId, "Nama coin tidak valid. Pakai huruf/angka saja, contoh: `/analisa btc`");
       return NextResponse.json({ ok: true });
     }
 
     const pairSymbol = `${coinArg.toUpperCase()}IDR`;
 
+    // Pesan disusun di dalam try, dikirim di luar: gagal kirim ke Telegram tidak
+    // boleh dilaporkan ke user sebagai "coin tidak ditemukan".
+    let reply: string;
     try {
       const result = await analyzeMultiTimeframe(pairSymbol);
-      const message = await buildMultiTimeframeMessage(result);
-      await sendTelegramMessage(message, String(chatId));
+      reply = await buildMultiTimeframeMessage(result);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unknown error";
+      const message = error instanceof Error ? error.message : "Unknown error";
       console.error("Webhook /analisa gagal:", message);
-
-      await sendTelegramMessage(
-        `Coin *${coinArg.toUpperCase()}* tidak ditemukan di Indodax, atau data candle-nya belum cukup untuk dianalisis multi-timeframe.`,
-        String(chatId)
-      ).catch(() => {});
+      reply = await explainAnalisaFailure(coinArg);
     }
+    await safeSend(chatId, reply);
     return NextResponse.json({ ok: true });
   }
 
@@ -333,7 +373,7 @@ export async function POST(request: Request) {
   // sudah mulai bullish di timeframe 1 jam. Tidak butuh argumen.
   if (/^\/scan(?:@\w+)?/i.test(text)) {
     try {
-      const results = await scanBullishCoins();
+      const results = await getScanResultsCached();
       await sendTelegramMessage(buildScanMessage(results), String(chatId));
     } catch (error) {
       const message =
@@ -421,6 +461,11 @@ export async function POST(request: Request) {
       "Pakai format: `/harga btc` atau `/harga sol`",
       String(chatId)
     );
+    return NextResponse.json({ ok: true });
+  }
+
+  if (!SYMBOL_RE.test(coinArg)) {
+    await safeSend(chatId, "Nama coin tidak valid. Pakai huruf/angka saja, contoh: `/harga btc`");
     return NextResponse.json({ ok: true });
   }
 
