@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { scanBullishCoins, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels } from "@/lib/indodax";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { saveBullishScanResults, type BullishScanRow } from "@/lib/supabase";
-import { openSignalViaGate } from "@/lib/outcome";
+import { openSignalViaGate, cancelUnannouncedSignal } from "@/lib/outcome";
 
 export const maxDuration = 60;
 
@@ -122,7 +122,22 @@ export async function GET(request: Request) {
 
           msg += "\nDitemukan " + bullish.length + " coin bullish. TP1/TP2 dari level resistance historis kalau tervalidasi (jarak wajar & minimal 3x disentuh), fallback ke +5%/+10% kalau tidak. Entry dari level support historis (candle mingguan, minimal 3x disentuh). Untuk detail lengkap salah satu, ketik /analisa <coin> di chat bot.\n";
           msg += "Ini deteksi momentum yang SUDAH mulai bergerak, bukan prediksi masa depan.\n\n⚡ RadarView — [pantau live di sini](https://radar-harian-crypto.vercel.app)";
-          await sendTelegramMessage(msg);
+          try {
+            await sendTelegramMessage(msg);
+          } catch (sendError: any) {
+            // Posisi sudah terlanjur masuk DB tapi siarannya gagal. Batalkan posisi
+            // itu supaya tidak jadi "posisi hantu" (terbuka 24 jam tanpa pernah
+            // diumumkan), lalu berhenti: Telegram kemungkinan sedang bermasalah dan
+            // cycle 5 menit berikutnya mencoba lagi. Dulu loop lanjut ke kandidat
+            // berikutnya, bisa menumpuk sampai MAX_ATTEMPTS posisi hantu.
+            console.error("Kirim Telegram gagal untuk " + coin.symbol + ":", sendError?.message);
+            try {
+              await cancelUnannouncedSignal(gate.outcomeId, gate.scanId);
+            } catch (cancelError: any) {
+              console.error("Batalkan posisi gagal untuk " + coin.symbol + ":", cancelError?.message);
+            }
+            return NextResponse.json({ ok: false, error: "telegram_send_failed", symbol: coin.symbol, count: bullish.length });
+          }
           break;
         }
       } catch (e: any) {
