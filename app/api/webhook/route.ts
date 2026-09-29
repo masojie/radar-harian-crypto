@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCoinPrice, getTopVolumeCoinsInRange } from "@/lib/indodax";
 import { buildCoinPriceMessage, buildRadarMessage, formatVolumeSingkat } from "@/lib/format";
 import { sendTelegramMessage } from "@/lib/telegram";
-import { analyzeMultiTimeframe, MultiTimeframeSignal, calculateSpotLevels, SpotPositionLevels, scanBullishCoins, ScanResult, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels, findNearestSupportLevels } from "@/lib/indodax";
+import { analyzeMultiTimeframe, MultiTimeframeSignal, calculateSpotLevels, SpotPositionLevels, scanBullishCoins, ScanResult, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels, findNearestSupportLevels, RSI_OVERSOLD_THRESHOLD, MTF_TOTAL_WEIGHT, MTF_WEIGHTED_THRESHOLD, VOLUME_CONFIRMATION_THRESHOLD, SCAN_MIN_VOLUME_IDR, SCAN_MAX_VOLUME_IDR, SCAN_MAX_COINS, SR_MIN_TOUCHES } from "@/lib/indodax";
 
 // Bentuk minimal dari update yang dikirim Telegram ke webhook kita.
 // Telegram sebenarnya kirim lebih banyak field, tapi kita cuma butuh ini.
@@ -10,6 +10,7 @@ interface TelegramUpdate {
   message?: {
     chat: {
       id: number;
+      type?: string; // "private" | "group" | "supergroup" | "channel"
     };
     text?: string;
   };
@@ -20,13 +21,29 @@ function formatRupiah(n: number): string {
   return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
 }
 
+// Rentang volume 24 jam yang dipakai /radar dan /scan. Diambil dari konstanta
+// di lib/indodax.ts supaya teks bantuan tidak bisa beda dari perilaku asli bot.
+const RANGE_TEXT = `Rp${SCAN_MIN_VOLUME_IDR / 1_000_000}-${SCAN_MAX_VOLUME_IDR / 1_000_000} juta`;
+
+// Kirim balasan tanpa pernah melempar error. Kalau Telegram menolak (mis. 400
+// karena format), jangan sampai jadi 500 ke webhook: Telegram akan mengulang
+// update yang sama terus-menerus.
+async function safeSend(chatId: number, text: string): Promise<void> {
+  try {
+    await sendTelegramMessage(text, String(chatId));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Webhook gagal kirim balasan:", message);
+  }
+}
+
 function buildScanMessage(results: ScanResult[]): string {
   if (results.length === 0) {
     return [
       "\ud83d\udd0d *SCAN CEPAT - Coin Bullish (1H)*\n",
-      "Tidak ada coin yang memenuhi kriteria bullish saat ini (EMA9>EMA50 dan RSI>=50).",
+      `Tidak ada coin yang memenuhi kriteria saat ini (RSI 1 jam di bawah ${RSI_OVERSOLD_THRESHOLD}, jenuh jual).`,
       "",
-      "_Minimal volume: Rp 500 Jt. Coba lagi beberapa saat lagi._",
+      `_Volume 24 jam: ${RANGE_TEXT}. Coba lagi beberapa saat lagi._`,
     ].join("\n");
   }
 
@@ -38,7 +55,7 @@ function buildScanMessage(results: ScanResult[]): string {
   });
 
   lines.push("");
-  lines.push(`_Ditemukan ${results.length} coin bullish dari maksimal 50 coin yang di-scan (volume >= Rp 500 Jt)._`);
+  lines.push(`_Ditemukan ${results.length} coin (RSI 1 jam di bawah ${RSI_OVERSOLD_THRESHOLD}) dari maksimal ${SCAN_MAX_COINS} coin yang di-scan (volume ${RANGE_TEXT})._`);
   lines.push("_Ini deteksi momentum yang SUDAH mulai bergerak, bukan prediksi masa depan. Untuk detail lengkap, ketik /analisa <coin>._");
 
   return lines.join("\n");
@@ -82,7 +99,7 @@ async function buildMultiTimeframeMessage(result: MultiTimeframeSignal): Promise
   );
   const volumeIcon = result.volumeConfirmed ? "\u2705" : "\u26a0\ufe0f";
   lines.push(
-    `*Volume 1h: ${result.volumeRatio1h.toFixed(1)}x rata-rata* ${volumeIcon} (syarat minimal 1.5x)\n`
+    `*Volume 1h: ${result.volumeRatio1h.toFixed(1)}x rata-rata* ${volumeIcon} (syarat minimal ${VOLUME_CONFIRMATION_THRESHOLD}x)\n`
   );
 
   const signalEmoji =
@@ -133,7 +150,7 @@ async function buildMultiTimeframeMessage(result: MultiTimeframeSignal): Promise
   }
 
   // Support & Resistance mingguan - level besar dari struktur candle
-  // 1 tahun terakhir, sudah terbukti dipantulkan berkali-kali (bukan
+  // 5 tahun terakhir, sudah terbukti dipantulkan berkali-kali (bukan
   // cuma persentase tetap dari harga sekarang).
   try {
     const weeklyCandles = await getWeeklyCandlesFull(result.symbol);
@@ -202,11 +219,13 @@ const SWING_PAIRS = ["BTCIDR", "ETHIDR", "SOLIDR"];
  * private chat.
  *
  * Command yang didukung sekarang:
+ * - /start            sapaan awal + daftar command singkat
+ * - /radar            top 5 coin volume 200-500 juta
  * - /harga <coin>   contoh: /harga btc, /harga sol
  * - /analisa <coin>  analisis multi-timeframe (1m,5m,15m,30m,1h)
  *                     untuk 1 coin, contoh: /analisa btc
  * - /scan             scan cepat semua coin, cari yang bullish (1H)
- * - /help            panduan lengkap command dan cara verifikasi
+ * - /help, /bantuan  panduan lengkap command dan cara verifikasi
  */
 export async function POST(request: Request) {
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -227,9 +246,27 @@ export async function POST(request: Request) {
   }
 
   const chatId = update.message?.chat.id;
+  const chatType = update.message?.chat.type;
   const text = update.message?.text;
 
   if (!chatId || !text) {
+    return NextResponse.json({ ok: true });
+  }
+
+  // Command /start: sapaan pertama waktu user buka bot. Dulu ada, sempat hilang
+  // waktu webhook dikembalikan ke versi lama, jadi user baru dapat balasan kosong.
+  if (/^\/start(?:@\w+)?(?:\s|$)/i.test(text)) {
+    const startMessage = [
+      "\ud83e\udd16 *Radar Harian Crypto Bot*\n",
+      "Bot pemantau pasar crypto Indodax.",
+      `Filter volume: ${RANGE_TEXT} / 24 jam.\n`,
+      "/radar \u2014 Top 5 volume Indodax",
+      "/analisa <coin> \u2014 Analisa sinyal multi-timeframe",
+      "/scan \u2014 Scan coin yang RSI 1 jam-nya jenuh jual",
+      "/help \u2014 Panduan lengkap cara baca hasilnya",
+    ].join("\n");
+
+    await safeSend(chatId, startMessage);
     return NextResponse.json({ ok: true });
   }
 
@@ -310,32 +347,38 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  // Command /help: panduan command dan cara verifikasi indikator
-  if (/^\/help(?:@\w+)?/i.test(text)) {
+  // Command /help (alias /bantuan): panduan command dan cara baca hasil.
+  // Semua ambang di teks ini diambil dari konstanta lib/indodax.ts, bukan
+  // ditulis manual - dulu teks ini sempat beda dari perilaku asli bot
+  // (arah RSI, jumlah timeframe, batas volume).
+  if (/^\/(?:help|bantuan)(?:@\w+)?(?:\s|$)/i.test(text)) {
     const helpMessage = [
       "\ud83d\udcd6 *PANDUAN RADAR CRYPTO*\n",
       "*Command yang tersedia:*",
-      "`/radar` - top 5 coin volume Rp200-500 juta 24 jam",
+      "`/radar` - top 5 coin volume " + RANGE_TEXT + " 24 jam",
       "`/harga <coin>` - cek harga saat ini",
       "Contoh: `/harga btc`",
       "`/analisa <coin>` - analisis multi-timeframe lengkap",
       "Contoh: `/analisa sol`",
-      "`/scan` - scan cepat semua coin, cari yang momentumnya sudah mulai bullish (timeframe 1 jam)\n",
+      "`/scan` - scan coin yang RSI 1 jam-nya di bawah " + RSI_OVERSOLD_THRESHOLD + " (jenuh jual)\n",
       "*1) /radar - lihat coin yang lagi ramai*",
-      "Menampilkan 5 coin dengan volume transaksi 24 jam antara Rp200-500 juta di Indodax, diurutkan dari volume terbesar. Cocok buat cari coin yang mulai ramai ditransaksikan tapi belum terlalu besar (masih ada ruang gerak harga).\n",
+      "Menampilkan 5 coin dengan volume transaksi 24 jam antara " + RANGE_TEXT + " di Indodax, diurutkan dari volume terbesar. Cocok buat cari coin yang mulai ramai ditransaksikan tapi belum terlalu besar (masih ada ruang gerak harga).\n",
       "*2) /analisa <coin> - baca kartu sinyalnya*",
       "Bot mengecek 5 timeframe sekaligus: 1 menit, 5 menit, 15 menit, 30 menit, dan 1 jam. Di tiap timeframe, dihitung 2 indikator:",
-      "- EMA9 vs EMA50 (arah tren pendek): \u2705 = EMA9 di atas EMA50 (bullish), \u274c = sebaliknya",
-      "- RSI14 (momentum): \u2705 = RSI \u226550 (bullish), \u274c = di bawah 50\n",
-      "Kalau minimal 3 dari 5 timeframe searah bullish di EMA MAUPUN RSI (dengan bobot 1h & 30m lebih besar), sinyal *BUY* keluar. Simetris untuk *SELL*. Kalau belum cukup konfirmasi, bot bilang *TUNGGU* - artinya jangan entry dulu, tunggu sinyal lebih jelas.\n",
-      "Baris *Volume 1h* menunjukkan rasio volume jam terakhir dibanding rata-rata. \u2705 kalau \u22651.5x (ada minat beli/jual ekstra), \u26a0\ufe0f kalau di bawah itu (sinyal kurang didukung volume, lebih rawan palsu).\n",
+      "- EMA9 vs EMA50 (arah tren pendek): \u2705 = EMA9 di atas EMA50, \u274c = sebaliknya",
+      "- RSI14 (momentum): \u2705 = RSI di bawah " + RSI_OVERSOLD_THRESHOLD + " (jenuh jual, peluang memantul), \u274c = RSI " + RSI_OVERSOLD_THRESHOLD + " ke atas\n",
+      "Tiap timeframe punya bobot: 1m, 5m, dan 15m masing-masing 1, 30m = 2, 1h = 3 (total " + MTF_TOTAL_WEIGHT + "). Jadi 1h + 30m saja sudah " + MTF_WEIGHTED_THRESHOLD + ".",
+      "Sinyal *BUY* keluar kalau skor \u2705 EMA dan skor \u2705 RSI sama-sama minimal " + MTF_WEIGHTED_THRESHOLD + "/" + MTF_TOTAL_WEIGHT + ", dan volume 1 jam minimal " + VOLUME_CONFIRMATION_THRESHOLD + "x rata-rata.",
+      "Sinyal *SELL* kebalikannya: skor \u274c EMA dan skor \u274c RSI sama-sama minimal " + MTF_WEIGHTED_THRESHOLD + "/" + MTF_TOTAL_WEIGHT + ", dengan syarat volume yang sama. Di SPOT, SELL artinya: kalau kamu SUDAH pegang coinnya, pertimbangkan exit (bukan ajakan short).",
+      "Kalau belum memenuhi, bot bilang *TUNGGU* - artinya jangan entry dulu, tunggu sinyal lebih jelas.\n",
+      "Baris *Volume 1h* = volume candle 1 jam terakhir dibanding rata-rata 10 candle 1 jam sebelumnya. \u2705 kalau \u2265" + VOLUME_CONFIRMATION_THRESHOLD + "x (ada minat ekstra), \u26a0\ufe0f kalau di bawah itu (sinyal kurang didukung volume, lebih rawan palsu).\n",
       "*3) Support & Resistance (mingguan)*",
-      "Muncul di bagian bawah /analisa. Ini BUKAN dari 5 timeframe di atas, tapi dari struktur candle mingguan 1 tahun terakhir - level harga yang sudah terbukti dipantulkan minimal 3x (support = lantai harga, resistance = atap harga).",
-      "\ud83d\udd34 Resistance = harga di atas harga sekarang yang sering jadi batas atas",
-      "\ud83d\udfe2 Support = harga di bawah harga sekarang yang sering jadi batas bawah",
+      "Muncul di bagian bawah /analisa. Ini BUKAN dari 5 timeframe di atas, tapi dari struktur candle mingguan 5 tahun terakhir - level harga yang sudah dipantulkan minimal " + SR_MIN_TOUCHES + "x (support = lantai harga, resistance = atap harga).",
+      "\ud83d\udd34 Resistance = level di atas harga sekarang yang sering jadi batas atas",
+      "\ud83d\udfe2 Support = level di bawah harga sekarang yang sering jadi batas bawah",
       "Persentase di bawahnya = jarak dari harga sekarang. Semakin sering disentuh (Nx sentuh), semakin kuat level itu dianggap.\n",
       "*4) Level TP/SL (kalau sinyal BUY)*",
-      "Entry, Stop Loss (ketat -3% / lebar -5%), dan Take Profit 1-3 (+5%/+10%/+15%) dari harga saat ini - referensi manajemen risiko, bukan patokan mutlak.\n",
+      "Entry, Stop Loss (ketat -3% / longgar -5%), dan Take Profit 1-3 (+5%/+10%/+15%) dari harga saat ini - referensi manajemen risiko, bukan patokan mutlak.\n",
       "*Apa itu Konteks Fibonacci?*",
       "Fibonacci menandai level harga di mana koreksi biasanya berhenti, dihitung dari swing high/low candle 1 jam terakhir. Fungsinya:",
       "1. Menilai entry: kalau harga sekarang dekat Fib 50%/61.8%, itu tandanya sudah koreksi cukup dalam - biasanya area beli lebih menarik",
@@ -343,7 +386,7 @@ export async function POST(request: Request) {
       "3. Alternatif SL: Fib 61.8% sering dipakai sebagai referensi teknikal - kalau harga break di bawah situ, banyak trader anggap tren naik sudah batal",
       "Fibonacci ini pelengkap penilaian, BUKAN opsi entry terpisah - entry tetap satu, di harga saat ini.\n",
       "*Link \"Lihat chart di Indodax\"*",
-      "Ada di bagian atas hasil /analisa, langsung buka chart TradingView coin itu di Indodax buat verifikasi visual.\n",
+      "Ada di bagian paling bawah hasil /analisa. Membuka chart Indodax coin itu buat verifikasi visual.\n",
       "*Cara mencocokkan sendiri di app Indodax:*",
       "1. Buka chart coin yang mau dicek",
       "2. Ganti timeframe candle ke 1m/5m/15m/30m/1h",
@@ -353,13 +396,21 @@ export async function POST(request: Request) {
       "\u26a0\ufe0f Bot ini alat bantu analisis teknikal, bukan jaminan profit. Selalu pakai manajemen risiko sendiri.",
     ].join("\n");
 
-    await sendTelegramMessage(helpMessage, String(chatId));
+    await safeSend(chatId, helpMessage);
     return NextResponse.json({ ok: true });
   }
 
   const match = text.match(/^\/harga(?:@\w+)?(?:\s+(\S+))?/i);
 
   if (!match) {
+    // Command yang tidak dikenal dibalas (dulu diam saja, user bingung).
+    // Hanya di chat pribadi, dan teks biasa non-command tetap diabaikan.
+    if (chatType === "private" && text.startsWith("/")) {
+      await safeSend(
+        chatId,
+        "\u2139\ufe0f Perintah tidak dikenal. Ketik /help untuk daftar perintah."
+      );
+    }
     return NextResponse.json({ ok: true });
   }
 
