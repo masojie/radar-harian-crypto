@@ -192,10 +192,10 @@ const MTF_TIMEFRAMES = [
   { label: "1h", tf: "60", minutes: 60, weight: 3 },
 ] as const;
 
-const MTF_TOTAL_WEIGHT = 8;
-const RSI_OVERSOLD_THRESHOLD = 40;
-const MTF_WEIGHTED_THRESHOLD = 5;
-const VOLUME_CONFIRMATION_THRESHOLD = 1.2;
+export const MTF_TOTAL_WEIGHT = 8;
+export const RSI_OVERSOLD_THRESHOLD = 40;
+export const MTF_WEIGHTED_THRESHOLD = 5;
+export const VOLUME_CONFIRMATION_THRESHOLD = 1.2;
 
 export async function getIntradayCandles(pairSymbol: string, tf: string, candleCount: number): Promise<Candle[]> {
   const tfMinutes = Number(tf);
@@ -285,9 +285,9 @@ export async function calculateSpotLevels(pairSymbol: string, currentPrice: numb
 
 export interface ScanResult { symbol: string; price: number; rsi: number; volumeIdr: number; }
 
-const SCAN_MIN_VOLUME_IDR = 200_000_000;
-const SCAN_MAX_VOLUME_IDR = 500_000_000;
-const SCAN_MAX_COINS = 120;
+export const SCAN_MIN_VOLUME_IDR = 200_000_000;
+export const SCAN_MAX_VOLUME_IDR = 500_000_000;
+export const SCAN_MAX_COINS = 120;
 const SCAN_EXCLUDED_SYMBOLS = new Set(["USDT", "USDC", "DAI", "TUSD", "BUSD", "FDUSD"]);
 
 export async function scanBullishCoins(): Promise<ScanResult[]> {
@@ -349,7 +349,7 @@ export async function scanNearestToThreshold(limit = 3): Promise<ScanSummary> {
 
 export interface PriceLevel { price: number; touches: number; rawPrices: number[]; type?: "support" | "resistance"; }
 
-const SR_MIN_TOUCHES = 3;
+export const SR_MIN_TOUCHES = 3;
 const SR_TOLERANCE_PERCENT = 0.01;
 
 function collectTouchPoints(candles: Candle[]): number[] {
