@@ -48,17 +48,54 @@ export const LIVE_WINDOW_MS = 15 * 60_000;
  */
 const BATCH_WINDOW_MS = 90_000;
 
+/**
+ * Satu scan menulis DUA baris untuk coin yang masuk kandidat gate: baris mentah
+ * dari saveBullishScanResults, lalu baris audit dari try_insert_signal beberapa
+ * detik kemudian (isinya sama, tapi ada TP/support dan alasan tolak). Tanpa ini
+ * "count" dan sparkline RSI jadi dobel ("6x" padahal 3 scan).
+ *
+ * Baris satu coin yang jaraknya kurang dari BATCH_WINDOW_MS dari baris pertama
+ * kelompoknya dianggap satu pembacaan. Scan berjalan tiap 5 menit dan satu
+ * request maksimal 60 detik, jadi dua scan berbeda tidak pernah tergabung.
+ * Yang dipertahankan baris terakhir (baris gate, yang lengkap).
+ */
+function collapseSameScan(rows: BullishScanRow[]): BullishScanRow[] {
+  const bySym = new Map<string, BullishScanRow[]>();
+  for (const row of rows) {
+    const list = bySym.get(row.symbol);
+    if (list) list.push(row);
+    else bySym.set(row.symbol, [row]);
+  }
+
+  const out: BullishScanRow[] = [];
+  bySym.forEach((list) => {
+    const chrono = [...list].sort((a, b) => Date.parse(a.scanned_at) - Date.parse(b.scanned_at));
+    let group: BullishScanRow[] = [];
+    const flush = () => {
+      if (group.length > 0) out.push(group[group.length - 1]);
+      group = [];
+    };
+    for (const row of chrono) {
+      if (group.length > 0 && Date.parse(row.scanned_at) - Date.parse(group[0].scanned_at) > BATCH_WINDOW_MS) flush();
+      group.push(row);
+    }
+    flush();
+  });
+  return out;
+}
+
 export function buildRadarView(rows: BullishScanRow[], nowMs: number = Date.now()): RadarView {
   if (rows.length === 0) {
     return { tracks: [], latestScanAt: null, activeCount: 0, sampleCount: 0, stale: true };
   }
 
-  const times = rows.map((r) => Date.parse(r.scanned_at));
+  const readings = collapseSameScan(rows);
+  const times = readings.map((r) => Date.parse(r.scanned_at));
   const latestMs = Math.max(...times);
-  const latestScanAt = rows[times.indexOf(latestMs)].scanned_at;
+  const latestScanAt = readings[times.indexOf(latestMs)].scanned_at;
 
   const bySymbol = new Map<string, BullishScanRow[]>();
-  for (const row of rows) {
+  for (const row of readings) {
     const list = bySymbol.get(row.symbol);
     if (list) list.push(row);
     else bySymbol.set(row.symbol, [row]);
@@ -99,7 +136,7 @@ export function buildRadarView(rows: BullishScanRow[], nowMs: number = Date.now(
     tracks,
     latestScanAt,
     activeCount: tracks.filter((t) => t.active).length,
-    sampleCount: rows.length,
+    sampleCount: readings.length,
     stale: nowMs - latestMs > LIVE_WINDOW_MS,
   };
 }
