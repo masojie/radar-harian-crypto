@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getTopVolumeCoinsInRange } from "@/lib/indodax";
-import { buildRadarMessage } from "@/lib/format";
+import { buildChannelRadarMessage } from "@/lib/channel-format";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { saveScanResults, type RadarScanRow } from "@/lib/supabase";
 
@@ -37,7 +37,7 @@ export async function GET(request: Request) {
 
   try {
     const topCoins = await getTopVolumeCoinsInRange(5);
-    const message = buildRadarMessage(topCoins);
+    const message = buildChannelRadarMessage(topCoins);
     await sendTelegramMessage(message);
 
     // Simpan hasil scan ke Supabase SETELAH Telegram terkirim.

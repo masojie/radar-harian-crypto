@@ -3,6 +3,7 @@ import { scanBullishCoins, getWeeklyCandlesFull, detectSupportResistanceLevels, 
 import { sendTelegramMessage } from "@/lib/telegram";
 import { saveBullishScanResults, type BullishScanRow } from "@/lib/supabase";
 import { openSignalViaGate, cancelUnannouncedSignal } from "@/lib/outcome";
+import { formatChannelPrice } from "@/lib/channel-format";
 
 export const maxDuration = 60;
 
@@ -89,7 +90,7 @@ export async function GET(request: Request) {
         });
 
         if (gate.broadcasted && gate.tp1 !== undefined && gate.tp2 !== undefined) {
-          const f = (v: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(v);
+          const f = formatChannelPrice;
 
           // PENTING: pesan HARUS pakai gate.tp1/gate.tp2 (angka final yang
           // beneran tersimpan di signal_outcomes dan dilacak
