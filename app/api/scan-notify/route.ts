@@ -35,6 +35,12 @@ export async function GET(request: Request) {
     if (authHeader !== "Bearer " + cronSecret) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+  } else if (process.env.NODE_ENV !== "development") {
+    // Fail-closed (sama seperti route /api/radar): CRON_SECRET belum di-set di
+    // production = salah konfigurasi, tolak. Dulu dibiarkan lolos, jadi kalau env
+    // ini terhapus endpoint jadi kebuka untuk siapa saja.
+    console.error("CRON_SECRET belum di-set, endpoint ditolak demi keamanan.");
+    return NextResponse.json({ error: "Server misconfigured: CRON_SECRET is not set" }, { status: 500 });
   }
 
   try {
