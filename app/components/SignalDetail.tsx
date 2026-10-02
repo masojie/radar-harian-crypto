@@ -54,6 +54,18 @@ function IconRange() {
   );
 }
 
+/** Persen jarak level dari entry, dihitung dari harga ASLI (TP1/TP2 bisa berbasis resistance, bukan selalu +5%/+10%). */
+function levelPct(price: number, entry: number): number {
+  return entry > 0 ? ((price - entry) / entry) * 100 : 0;
+}
+
+/** Tampilan persen level, 1 desimal supaya muat di kolom sempit. Contoh: "+5,0%" / "-3,0%". */
+function formatLevelPct(p: number): string {
+  const rounded = Math.round(p * 10) / 10;
+  const abs = formatNumber(Math.abs(rounded), 1);
+  return `${rounded < 0 ? "-" : "+"}${abs}%`;
+}
+
 interface LevelRow {
   label: string;
   price: number;
@@ -80,11 +92,11 @@ export default function SignalDetail({
   const priceSpan = high - low > 0 ? high - low : 1;
 
   const levels: LevelRow[] = [
-    { label: "TP3", price: signal.tp3_price, hit: checkHit(signal.tp3_price, high, low, false), tone: "up", pct: 15 },
-    { label: "TP2", price: signal.tp2_price, hit: checkHit(signal.tp2_price, high, low, false), tone: "up", pct: 10 },
-    { label: "TP1", price: signal.tp1_price, hit: checkHit(signal.tp1_price, high, low, false), tone: "up", pct: 5 },
-    { label: "SL -3%", price: signal.sl_tight_price, hit: checkHit(signal.sl_tight_price, high, low, true), tone: "warn", pct: -3 },
-    { label: "SL -5%", price: signal.sl_wide_price, hit: checkHit(signal.sl_wide_price, high, low, true), tone: "down", pct: -5 },
+    { label: "TP3", price: signal.tp3_price, hit: checkHit(signal.tp3_price, high, low, false), tone: "up", pct: levelPct(signal.tp3_price, entry) },
+    { label: "TP2", price: signal.tp2_price, hit: checkHit(signal.tp2_price, high, low, false), tone: "up", pct: levelPct(signal.tp2_price, entry) },
+    { label: "TP1", price: signal.tp1_price, hit: checkHit(signal.tp1_price, high, low, false), tone: "up", pct: levelPct(signal.tp1_price, entry) },
+    { label: "SL -3%", price: signal.sl_tight_price, hit: checkHit(signal.sl_tight_price, high, low, true), tone: "warn", pct: levelPct(signal.sl_tight_price, entry) },
+    { label: "SL -5%", price: signal.sl_wide_price, hit: checkHit(signal.sl_wide_price, high, low, true), tone: "down", pct: levelPct(signal.sl_wide_price, entry) },
   ];
 
   // One shared vertical scale, TP3 at the top to SL -5% at the bottom, so the
@@ -169,7 +181,7 @@ export default function SignalDetail({
                     <span className={`rail-label ${r.hit ? `rail-label-${r.tone}` : ""}`}>{r.label}</span>
                     <span className="rail-price num">Rp{formatIDR(r.price)}</span>
                     <span className={`rail-pct num tone-${r.pct > 0 ? "up" : "down"}`}>
-                      {r.pct > 0 ? "+" : ""}{r.pct}%
+                      {formatLevelPct(r.pct)}
                     </span>
                     <span className="rail-status">{r.hit ? "Kena" : ""}</span>
                   </div>

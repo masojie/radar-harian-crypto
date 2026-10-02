@@ -1623,7 +1623,7 @@ button {
 
 .rail-row {
   display: grid;
-  grid-template-columns: 38px 1fr 38px 40px;
+  grid-template-columns: 38px 1fr 44px 40px;
   align-items: center;
   gap: 6px;
   padding: 5px 0;
