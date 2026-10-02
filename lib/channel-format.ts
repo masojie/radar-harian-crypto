@@ -23,6 +23,9 @@ export function formatChannelPrice(value: number): string {
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
+    // Dikunci eksplisit: default digit IDR bergantung versi ICU/Node (ICU lama
+    // bisa memaksa ",00"), jadi jangan diandalkan.
+    minimumFractionDigits: 0,
     maximumFractionDigits: value >= 1000 ? 0 : 4,
   }).format(value);
 }
