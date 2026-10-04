@@ -1,5 +1,4 @@
 import type { TopCoin } from "./indodax";
-import { formatVolumeSingkat } from "./format";
 
 /**
  * Formatter khusus pesan CHANNEL Telegram (radar harian + scan-notify).
@@ -30,6 +29,21 @@ export function formatChannelPrice(value: number): string {
   }).format(value);
 }
 
+/**
+ * Volume singkat untuk pesan channel. Satuan dan ambangnya sama dengan
+ * formatVolumeSingkat di lib/format.ts (yang juga dipakai bot, jadi tidak
+ * diubah), bedanya desimal pakai koma sesuai format Indonesia: "Rp25,0 M",
+ * bukan "Rp25.0 M". Di format Indonesia titik itu pemisah ribuan, jadi
+ * "25.0" mudah terbaca salah dan tidak konsisten dengan harga di pesan yang sama.
+ */
+export function formatChannelVolume(value: number): string {
+  const satuan = (n: number) => n.toFixed(1).replace(".", ",");
+  if (value >= 1_000_000_000_000) return `Rp${satuan(value / 1_000_000_000_000)} T`;
+  if (value >= 1_000_000_000) return `Rp${satuan(value / 1_000_000_000)} M`;
+  if (value >= 1_000_000) return `Rp${satuan(value / 1_000_000)} Jt`;
+  return formatChannelPrice(value);
+}
+
 // Escape karakter spesial Telegram Markdown (legacy): _ * ` [
 function escapeMarkdown(text: string): string {
   return text.replace(/([_*`[])/g, "\\$1");
@@ -37,7 +51,7 @@ function escapeMarkdown(text: string): string {
 
 /**
  * Pesan radar harian untuk channel. Isi dan susunannya sama dengan
- * buildRadarMessage di lib/format.ts, bedanya hanya format harga.
+ * buildRadarMessage di lib/format.ts, bedanya hanya format harga dan volume.
  */
 export function buildChannelRadarMessage(coins: TopCoin[]): string {
   const now = new Date();
@@ -53,7 +67,7 @@ export function buildChannelRadarMessage(coins: TopCoin[]): string {
     return (
       `${rank}. *${safeSymbol}*\n` +
       `   Harga: ${formatChannelPrice(coin.lastPrice)}\n` +
-      `   Volume 24 Jam: ${formatVolumeSingkat(coin.volumeIdr)}`
+      `   Volume 24 Jam: ${formatChannelVolume(coin.volumeIdr)}`
     );
   });
 
