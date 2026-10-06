@@ -119,13 +119,18 @@ export async function GET(request: Request) {
             "\n\n";
           if (supports.length >= 1) msg += "   Entry (support terdekat):\n   " + f(supports[0].price) + " (" + supports[0].touches + "x disentuh)\n\n";
 
-          // Kandidat lain buat konteks doang (tanpa TP/Entry, biar gak
-          // ketuker sama level punya coin yang benar-benar disiarkan di
-          // atas) - ambil dari sisa bullish, kecualikan coin yang barusan.
+          // Koin bullish lain buat konteks doang, BUKAN sinyal baru. Yang
+          // urutannya di atas koin ini sudah ditolak gate (umumnya posisinya
+          // masih terbuka dari sinyal sebelumnya), jadi jangan tampil seperti
+          // sinyal (nomor + 🟢): beri judul yang jelas. Tanpa TP/Entry biar
+          // gak ketuker sama level koin yang benar-benar disiarkan di atas.
           const others = bullish.filter((c) => c.symbol !== coin.symbol).slice(0, 2);
-          others.forEach((c, k) => {
-            msg += (k + 2) + ". 🟢 " + c.symbol + " - RSI " + c.rsi.toFixed(1) + " - " + f(c.price) + "\n";
-          });
+          if (others.length > 0) {
+            msg += "Pantauan lain (bukan sinyal baru):\n";
+            others.forEach((c) => {
+              msg += "· " + c.symbol + " - RSI " + c.rsi.toFixed(1) + " - " + f(c.price) + "\n";
+            });
+          }
 
           msg += "\nDitemukan " + bullish.length + " coin bullish. TP1/TP2 dari level resistance historis kalau tervalidasi (jarak wajar & minimal 3x disentuh), fallback ke +5%/+10% kalau tidak. Entry dari level support historis (candle mingguan, minimal 3x disentuh). Untuk detail lengkap salah satu, ketik /analisa <coin> di chat bot.\n";
           msg += "Ini deteksi momentum yang SUDAH mulai bergerak, bukan prediksi masa depan.\n\n⚡ RadarView — [pantau live di sini](https://radar-harian-crypto.vercel.app)";
