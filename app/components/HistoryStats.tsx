@@ -137,7 +137,7 @@ export default function HistoryStats({ signals }: { signals: SignalOutcomeRow[] 
             Sinyal selesai
           </h2>
           <p className="section-note">
-            Hasil memakai skenario SL lebar (-5%). Ini simulasi tanpa biaya trading dan pajak,
+            Hasil memakai skenario SL lebar (-5%). Ini simulasi tanpa biaya trading, pajak, dan slippage,
             jadi hasil nyata lebih rendah. Klik baris untuk detail.
           </p>
           <ul className="hist">
