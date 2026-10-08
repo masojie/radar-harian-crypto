@@ -1,4 +1,4 @@
-import type { BullishScanRow } from "./supabase-public";
+import type { BullishScanRow, SignalOutcomeRow } from "./supabase-public";
 
 /**
  * Tabel bullish_scans berisi satu baris per coin per scan, jadi coin yang
@@ -7,12 +7,46 @@ import type { BullishScanRow } from "./supabase-public";
  * lengkap dengan jejak RSI-nya, bukan puluhan baris yang hampir sama.
  */
 
+/**
+ * Nasib satu coin di gate sinyal pada pembacaan terbaru. Kosakata sama dengan
+ * pesan channel: hanya "sinyal" yang disiarkan sebagai sinyal baru, sisanya
+ * "pantauan" (di channel tampil sebagai "Pantauan lain (bukan sinyal baru)").
+ */
+export type TrackStatus = "sinyal" | "posisi" | "cooldown" | "ditolak" | "pantauan";
+
+export const STATUS_LABEL: Record<TrackStatus, string> = {
+  sinyal: "Sinyal baru",
+  posisi: "Posisi terbuka",
+  cooldown: "Cooldown",
+  ditolak: "Ditolak gate",
+  pantauan: "Pantauan",
+};
+
+/**
+ * @param signalIds id baris bullish_scans yang melahirkan posisi
+ *   (signal_outcomes.signal_id menunjuk ke id baris audit gate).
+ */
+export function trackStatus(row: BullishScanRow, signalIds: ReadonlySet<number>): TrackStatus {
+  if (signalIds.has(row.id)) return "sinyal";
+  const alasan = row.tolak_alasan;
+  if (!alasan) return "pantauan";
+  if (alasan === "posisi_masih_terbuka" || alasan === "race_posisi_terbuka") return "posisi";
+  if (alasan.startsWith("cooldown")) return "cooldown";
+  return "ditolak";
+}
+
 export interface CoinTrack {
   symbol: string;
   /** Pembacaan terbaru untuk coin ini. */
   latest: BullishScanRow;
-  /** RSI dari yang terlama ke terbaru. */
+  /**
+   * RSI dari yang terlama ke terbaru, satu titik per perubahan nilai. RSI
+   * dihitung dari candle 1 jam yang sudah tutup, jadi nilainya sama selama
+   * sejam penuh. Tanpa ini jejak per 5 menit hanya garis datar.
+   */
   rsiSeries: number[];
+  /** Nasib coin ini di gate sinyal pada pembacaan terbaru. */
+  status: TrackStatus;
   /** Berapa kali coin ini terdeteksi di rentang data yang dimuat. */
   count: number;
   firstSeenAt: string;
@@ -36,6 +70,8 @@ export interface RadarView {
    * baru" berarti "tidak ada coin oversold sekarang", bukan "scan terakhir".
    */
   stale: boolean;
+  /** Lebar jendela waktu data (jam). null = jendela kosong, tampilan jatuh balik ke baris terakhir. */
+  windowHours: number | null;
 }
 
 /** Scan berjalan tiap 5 menit. Lewat dari ini berarti tidak ada coin oversold. */
@@ -84,9 +120,31 @@ function collapseSameScan(rows: BullishScanRow[]): BullishScanRow[] {
   return out;
 }
 
-export function buildRadarView(rows: BullishScanRow[], nowMs: number = Date.now()): RadarView {
+/** Satu titik per perubahan nilai RSI (lihat CoinTrack.rsiSeries). */
+function rsiSteps(chrono: BullishScanRow[]): number[] {
+  const out: number[] = [];
+  for (const row of chrono) {
+    const last = out[out.length - 1];
+    if (last === undefined || Math.abs(row.rsi - last) > 1e-6) out.push(row.rsi);
+  }
+  return out;
+}
+
+export interface RadarViewOptions {
+  /** id baris bullish_scans yang melahirkan posisi (signal_outcomes.signal_id). */
+  signalIds?: ReadonlySet<number>;
+  windowHours?: number | null;
+}
+
+export function buildRadarView(
+  rows: BullishScanRow[],
+  nowMs: number = Date.now(),
+  options: RadarViewOptions = {}
+): RadarView {
+  const signalIds = options.signalIds ?? new Set<number>();
+  const windowHours = options.windowHours ?? null;
   if (rows.length === 0) {
-    return { tracks: [], latestScanAt: null, activeCount: 0, sampleCount: 0, stale: true };
+    return { tracks: [], latestScanAt: null, activeCount: 0, sampleCount: 0, stale: true, windowHours };
   }
 
   const readings = collapseSameScan(rows);
@@ -112,7 +170,8 @@ export function buildRadarView(rows: BullishScanRow[], nowMs: number = Date.now(
     tracks.push({
       symbol,
       latest,
-      rsiSeries: chrono.map((r) => r.rsi),
+      rsiSeries: rsiSteps(chrono),
+      status: trackStatus(latest, signalIds),
       count: chrono.length,
       firstSeenAt: first.scanned_at,
       lastSeenAt: latest.scanned_at,
@@ -138,5 +197,66 @@ export function buildRadarView(rows: BullishScanRow[], nowMs: number = Date.now(
     activeCount: tracks.filter((t) => t.active).length,
     sampleCount: readings.length,
     stale: nowMs - latestMs > LIVE_WINDOW_MS,
+    windowHours,
   };
+}
+
+export interface TargetRow {
+  name: string;
+  price: number;
+  note: string;
+}
+
+export interface TrackTargets {
+  /** "posisi" = angka posisi yang sedang dilacak, "gate" = TP final hasil gate, "none" = belum ada. */
+  source: "posisi" | "gate" | "none";
+  rows: TargetRow[];
+}
+
+function tpNote(sumber: string | null, touches: number | null, fixedPct: number): string {
+  if (sumber === "resistance") {
+    return touches !== null && touches > 0 ? `resistance mingguan, ${touches}x disentuh` : "resistance mingguan";
+  }
+  return `+${fixedPct}% dari harga`;
+}
+
+/**
+ * Target untuk kartu utama Radar. TIDAK PERNAH memakai tp1_price/tp2_price
+ * mentah: itu usulan resistance yang bisa ditolak gate (contoh nyata UCJL:
+ * usulan +465%, yang benar-benar dilacak +5%). Urutan sumber:
+ * 1. posisi terbuka coin itu (angka yang dilacak sistem),
+ * 2. TP final hasil gate pada baris terbaru,
+ * 3. tidak ada (baris lama sebelum kolom TP final ada).
+ */
+export function buildTargets(
+  track: CoinTrack,
+  openBySymbol: ReadonlyMap<string, SignalOutcomeRow>
+): TrackTargets {
+  const rows: TargetRow[] = [];
+  let source: TrackTargets["source"] = "none";
+  const open = track.status === "posisi" ? openBySymbol.get(track.symbol) : undefined;
+  const l = track.latest;
+
+  if (open) {
+    source = "posisi";
+    rows.push(
+      { name: "TP1", price: open.tp1_price, note: "target posisi terbuka" },
+      { name: "TP2", price: open.tp2_price, note: "target posisi terbuka" }
+    );
+  } else if (l.tp1_final !== null && l.tp2_final !== null) {
+    source = "gate";
+    rows.push(
+      { name: "TP1", price: l.tp1_final, note: tpNote(l.tp1_sumber, l.tp1_touches, 5) },
+      { name: "TP2", price: l.tp2_final, note: tpNote(l.tp2_sumber, l.tp2_touches, 10) }
+    );
+  }
+
+  if (l.support_price !== null) {
+    rows.push({
+      name: "Entry",
+      price: l.support_price,
+      note: l.support_touches !== null ? `support mingguan, ${l.support_touches}x disentuh` : "support mingguan",
+    });
+  }
+  return { source, rows };
 }

@@ -1,4 +1,6 @@
-import type { CoinTrack, RadarView } from "@/lib/radar-view";
+import type { CoinTrack, RadarView, TrackTargets } from "@/lib/radar-view";
+import { STATUS_LABEL, buildTargets } from "@/lib/radar-view";
+import type { SignalOutcomeRow } from "@/lib/supabase-public";
 import {
   distancePct,
   formatIDR,
@@ -10,6 +12,7 @@ import {
   rsiZoneLabel,
   timeAgo,
 } from "@/lib/format-dashboard";
+import { RSI_OVERSOLD_THRESHOLD, SCAN_MAX_VOLUME_IDR, SCAN_MIN_VOLUME_IDR } from "@/lib/thresholds";
 import RsiGauge from "./RsiGauge";
 import Sparkline from "./Sparkline";
 
@@ -19,17 +22,9 @@ function detectionCount(track: CoinTrack): string {
   return `${track.count}x dalam ${formatSpan(span)}`;
 }
 
-function Hero({ track, stale }: { track: CoinTrack; stale: boolean }) {
+function Hero({ track, stale, targets }: { track: CoinTrack; stale: boolean; targets: TrackTargets }) {
   const { latest } = track;
   const zone = rsiZone(latest.rsi);
-
-  const levels = [
-    { name: "TP1", price: latest.tp1_price, touches: latest.tp1_touches },
-    { name: "TP2", price: latest.tp2_price, touches: latest.tp2_touches },
-    { name: "Entry", price: latest.support_price, touches: latest.support_touches },
-  ].filter(
-    (l): l is { name: string; price: number; touches: number | null } => l.price !== null
-  );
 
   return (
     <article className="hero" aria-labelledby="hero-symbol">
@@ -41,9 +36,16 @@ function Hero({ track, stale }: { track: CoinTrack; stale: boolean }) {
             ? `Terakhir terdeteksi ${timeAgo(track.lastSeenAt)}`
             : "RSI terendah di scan terakhir"}
         </p>
-        <span className={stale ? "chip chip-neutral" : `chip chip-${zone}`}>
-          {stale ? "Sudah lewat" : rsiZoneLabel(zone)}
-        </span>
+        <div className="hero-chips">
+          {!stale && (
+            <span className={track.status === "sinyal" ? "chip chip-signal" : "chip"}>
+              {STATUS_LABEL[track.status]}
+            </span>
+          )}
+          <span className={stale ? "chip chip-neutral" : `chip chip-${zone}`}>
+            {stale ? "Sudah lewat" : rsiZoneLabel(zone)}
+          </span>
+        </div>
       </div>
 
       <div className="hero-main">
@@ -78,7 +80,7 @@ function Hero({ track, stale }: { track: CoinTrack; stale: boolean }) {
 
       {track.rsiSeries.length > 1 && (
         <div className="hero-trend">
-          <p className="trend-label">Jejak RSI</p>
+          <p className="trend-label">Jejak RSI per jam</p>
           <Sparkline
             stretch
             height={44}
@@ -90,16 +92,16 @@ function Hero({ track, stale }: { track: CoinTrack; stale: boolean }) {
         </div>
       )}
 
-      {levels.length > 0 && (
+      {targets.rows.length > 0 && (
         <div className="levels">
-          <h3 className="levels-title">Level teknikal mingguan</h3>
+          <h3 className="levels-title">Target dan level</h3>
           <ul className="levels-list">
-            {levels.map((l) => (
+            {targets.rows.map((l) => (
               <li key={l.name}>
                 <span className="level-name">{l.name}</span>
                 <span className="level-main">
                   <span className="num">Rp{formatIDR(l.price)}</span>
-                  {l.touches !== null && <span className="level-touch">{l.touches}x disentuh</span>}
+                  <span className="level-touch">{l.note}</span>
                 </span>
                 <span className="level-dist num">{formatPct(distancePct(latest.price, l.price))}</span>
               </li>
@@ -128,7 +130,7 @@ function TrackRow({ track }: { track: CoinTrack }) {
         </p>
         <p className="coin-meta">
           {track.active
-            ? `Terdeteksi ${detectionCount(track)}`
+            ? `Terdeteksi ${detectionCount(track)} · ${STATUS_LABEL[track.status]}`
             : `Terakhir ${timeAgo(track.lastSeenAt)}, ${track.count}x`}
         </p>
       </div>
@@ -150,19 +152,27 @@ function TrackRow({ track }: { track: CoinTrack }) {
 }
 
 function QuietBanner({ latestScanAt }: { latestScanAt: string | null }) {
+  const volumeMin = SCAN_MIN_VOLUME_IDR / 1_000_000;
+  const volumeMax = SCAN_MAX_VOLUME_IDR / 1_000_000;
   return (
     <div className="empty empty-inline" role="status">
       <span className="empty-rings" aria-hidden="true" />
       <h2>Tidak ada coin oversold sekarang</h2>
       <p>
-        Scan jalan tiap 5 menit dan hanya menyimpan coin dengan RSI di bawah 35.
-        {latestScanAt ? ` Sinyal terakhir masuk ${timeAgo(latestScanAt)}.` : ""}
+        {`Scan jalan tiap 5 menit dan hanya menyimpan coin dengan RSI 1 jam di bawah ${RSI_OVERSOLD_THRESHOLD} (volume 24 jam Rp${volumeMin}-${volumeMax} juta).`}
+        {latestScanAt ? ` Coin oversold terakhir terdeteksi ${timeAgo(latestScanAt)}.` : ""}
       </p>
     </div>
   );
 }
 
-export default function RadarTable({ view }: { view: RadarView }) {
+export default function RadarTable({
+  view,
+  openBySymbol = new Map<string, SignalOutcomeRow>(),
+}: {
+  view: RadarView;
+  openBySymbol?: ReadonlyMap<string, SignalOutcomeRow>;
+}) {
   if (view.tracks.length === 0) {
     return (
       <div className="empty">
@@ -174,11 +184,12 @@ export default function RadarTable({ view }: { view: RadarView }) {
   }
 
   const [lead, ...rest] = view.tracks;
+  const targets = buildTargets(lead, openBySymbol);
 
   return (
     <div className="stack stagger">
       {view.stale && <QuietBanner latestScanAt={view.latestScanAt} />}
-      <Hero track={lead} stale={view.stale} />
+      <Hero track={lead} stale={view.stale} targets={targets} />
 
       {rest.length > 0 && (
         <section aria-labelledby="track-title">
@@ -186,7 +197,9 @@ export default function RadarTable({ view }: { view: RadarView }) {
             Coin lain yang terpantau
           </h2>
           <p className="section-note">
-            Dikelompokkan per coin dari {view.sampleCount} pembacaan sinyal terakhir.
+            {`Dikelompokkan per coin dari ${view.sampleCount} pembacaan scan ${
+              view.windowHours ? `dalam ${view.windowHours} jam terakhir` : "terakhir"
+            }.`}
           </p>
           <ul className="tracks">
             {rest.map((track) => (
