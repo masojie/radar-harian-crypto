@@ -3,7 +3,7 @@ import { scanBullishCoins, getWeeklyCandlesFull, detectSupportResistanceLevels, 
 import { sendTelegramMessage } from "@/lib/telegram";
 import { saveBullishScanResults, type BullishScanRow } from "@/lib/supabase";
 import { openSignalViaGate, cancelUnannouncedSignal } from "@/lib/outcome";
-import { formatChannelPrice } from "@/lib/channel-format";
+import { formatChannelPrice, formatChannelPct } from "@/lib/channel-format";
 
 export const maxDuration = 60;
 
@@ -117,6 +117,17 @@ export async function GET(request: Request) {
             f(gate.tp2) +
             (tp2FromResistance && tp2Touches !== undefined ? " (" + tp2Touches + "x disentuh)" : "") +
             "\n\n";
+          // SL = batas rugi yang dipakai statistik dashboard (skenario SL lebar).
+          // Angkanya HARUS gate.slWide (yang tersimpan dan dilacak), bukan
+          // dihitung ulang di sini, dan persennya diturunkan dari harga supaya
+          // tidak bisa beda dari yang dilacak. Tanpa baris ini subscriber tidak
+          // pernah tahu level SL, padahal hasil di dashboard mengandaikannya.
+          if (gate.slWide !== undefined && coin.price > 0) {
+            msg +=
+              "   SL (" + formatChannelPct((gate.slWide / coin.price - 1) * 100) + " dari entry):\n   " +
+              f(gate.slWide) +
+              "\n\n";
+          }
           if (supports.length >= 1) msg += "   Entry (support terdekat):\n   " + f(supports[0].price) + " (" + supports[0].touches + "x disentuh)\n\n";
 
           // Koin bullish lain buat konteks doang, BUKAN sinyal baru. Yang

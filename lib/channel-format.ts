@@ -30,6 +30,17 @@ export function formatChannelPrice(value: number): string {
 }
 
 /**
+ * Persen bertanda untuk pesan channel. Nilai bulat tampil ringkas ("-5%"),
+ * nilai lain 1 desimal dengan koma ("-4,7%").
+ */
+export function formatChannelPct(p: number): string {
+  const rounded = Math.round(p * 10) / 10;
+  const abs = Math.abs(rounded);
+  const text = Number.isInteger(abs) ? String(abs) : abs.toFixed(1).replace(".", ",");
+  return `${rounded < 0 ? "-" : "+"}${text}%`;
+}
+
+/**
  * Volume singkat untuk pesan channel. Satuan dan ambangnya sama dengan
  * formatVolumeSingkat di lib/format.ts (yang juga dipakai bot, jadi tidak
  * diubah), bedanya desimal pakai koma sesuai format Indonesia: "Rp25,0 M",
