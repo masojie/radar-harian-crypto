@@ -1,3 +1,27 @@
+import {
+  MTF_TOTAL_WEIGHT,
+  RSI_OVERSOLD_THRESHOLD,
+  MTF_WEIGHTED_THRESHOLD,
+  VOLUME_CONFIRMATION_THRESHOLD,
+  SCAN_MIN_VOLUME_IDR,
+  SCAN_MAX_VOLUME_IDR,
+  SCAN_MAX_COINS,
+  SR_MIN_TOUCHES,
+} from "./thresholds";
+
+// Diekspor ulang supaya semua import lama (`from "@/lib/indodax"`) tetap valid.
+// Angkanya sendiri hanya didefinisikan di lib/thresholds.ts.
+export {
+  MTF_TOTAL_WEIGHT,
+  RSI_OVERSOLD_THRESHOLD,
+  MTF_WEIGHTED_THRESHOLD,
+  VOLUME_CONFIRMATION_THRESHOLD,
+  SCAN_MIN_VOLUME_IDR,
+  SCAN_MAX_VOLUME_IDR,
+  SCAN_MAX_COINS,
+  SR_MIN_TOUCHES,
+};
+
 // Ambil dan olah data dari API publik Indodax.
 // Endpoint ini gratis, gak butuh API key, rate limit 180 request/menit.
 
@@ -192,10 +216,7 @@ const MTF_TIMEFRAMES = [
   { label: "1h", tf: "60", minutes: 60, weight: 3 },
 ] as const;
 
-export const MTF_TOTAL_WEIGHT = 8;
-export const RSI_OVERSOLD_THRESHOLD = 40;
-export const MTF_WEIGHTED_THRESHOLD = 5;
-export const VOLUME_CONFIRMATION_THRESHOLD = 1.2;
+// Ambang scan (MTF_*, RSI_*, VOLUME_*, SCAN_*, SR_MIN_TOUCHES) ada di ./thresholds.
 
 export async function getIntradayCandles(pairSymbol: string, tf: string, candleCount: number): Promise<Candle[]> {
   const tfMinutes = Number(tf);
@@ -285,9 +306,6 @@ export async function calculateSpotLevels(pairSymbol: string, currentPrice: numb
 
 export interface ScanResult { symbol: string; price: number; rsi: number; volumeIdr: number; }
 
-export const SCAN_MIN_VOLUME_IDR = 200_000_000;
-export const SCAN_MAX_VOLUME_IDR = 500_000_000;
-export const SCAN_MAX_COINS = 120;
 const SCAN_EXCLUDED_SYMBOLS = new Set(["USDT", "USDC", "DAI", "TUSD", "BUSD", "FDUSD"]);
 
 export async function scanBullishCoins(): Promise<ScanResult[]> {
@@ -349,7 +367,6 @@ export async function scanNearestToThreshold(limit = 3): Promise<ScanSummary> {
 
 export interface PriceLevel { price: number; touches: number; rawPrices: number[]; type?: "support" | "resistance"; }
 
-export const SR_MIN_TOUCHES = 3;
 const SR_TOLERANCE_PERCENT = 0.01;
 
 function collectTouchPoints(candles: Candle[]): number[] {
