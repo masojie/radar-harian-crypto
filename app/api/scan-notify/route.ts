@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { scanBullishCoins, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels } from "@/lib/indodax";
+import { scanBullishCoins, scanNearestToThreshold, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels, type ScanResult } from "@/lib/indodax";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { saveBullishScanResults, type BullishScanRow } from "@/lib/supabase";
 import { openSignalViaGate, cancelUnannouncedSignal } from "@/lib/outcome";
 import { formatChannelPrice, formatChannelPct } from "@/lib/channel-format";
+import { buildHeartbeatMessage, isHeartbeatSlot } from "@/lib/heartbeat";
 
 export const maxDuration = 60;
 
@@ -29,6 +30,21 @@ function isSameLevel(a: number | undefined, b: number | undefined): boolean {
   return Math.abs(a - b) <= Math.abs(b) * PRICE_MATCH_TOLERANCE;
 }
 
+// Heartbeat senyap: tanda radar hidup saat tidak ada sinyal baru yang disiarkan.
+// Gagal kirim heartbeat TIDAK boleh membuat endpoint error ke cron, jadi
+// dibungkus sendiri.
+async function maybeSendHeartbeat(now: Date, bullish: ScanResult[]): Promise<boolean> {
+  if (!isHeartbeatSlot(now)) return false;
+  try {
+    const nearest = bullish.length === 0 ? await scanNearestToThreshold(3) : undefined;
+    await sendTelegramMessage(buildHeartbeatMessage({ now, bullish, nearest }), undefined, { silent: true });
+    return true;
+  } catch (e: any) {
+    console.error("Scan-notify: gagal kirim heartbeat:", e?.message);
+    return false;
+  }
+}
+
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
@@ -48,7 +64,8 @@ export async function GET(request: Request) {
     const bullish = await scanBullishCoins();
 
     if (bullish.length === 0) {
-      return NextResponse.json({ ok: true, count: 0 });
+      const heartbeatSent = await maybeSendHeartbeat(new Date(), bullish);
+      return NextResponse.json({ ok: true, count: 0, heartbeatSent });
     }
 
     const bullRows: BullishScanRow[] = bullish.map((coin, idx) => ({
@@ -65,6 +82,7 @@ export async function GET(request: Request) {
     }
 
     const attempts = Math.min(bullish.length, MAX_ATTEMPTS);
+    let broadcasted = false;
 
     for (let i = 0; i < attempts; i++) {
       const coin = bullish[i];
@@ -161,6 +179,7 @@ export async function GET(request: Request) {
             }
             return NextResponse.json({ ok: false, error: "telegram_send_failed", symbol: coin.symbol, count: bullish.length });
           }
+          broadcasted = true;
           break;
         }
       } catch (e: any) {
@@ -168,7 +187,10 @@ export async function GET(request: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true, count: bullish.length, top3: bullish.slice(0, 3).map((c: any) => c.symbol) });
+    // Tidak ada sinyal yang disiarkan di scan ini (semua kandidat ditolak gate):
+    // channel tidak menerima apa pun, jadi pakai slot heartbeat supaya tetap kelihatan hidup.
+    const heartbeatSent = broadcasted ? false : await maybeSendHeartbeat(new Date(), bullish);
+    return NextResponse.json({ ok: true, count: bullish.length, top3: bullish.slice(0, 3).map((c: any) => c.symbol), heartbeatSent });
   } catch (error: any) {
     console.error("Scan-notify fail:", error?.message);
     return NextResponse.json({ ok: false, error: error?.message }, { status: 500 });
