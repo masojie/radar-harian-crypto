@@ -20,8 +20,26 @@ export function formatRupiah(value: number): string {
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
-    maximumFractionDigits: 0,
+    // Dikunci eksplisit: default digit IDR bergantung versi ICU/Node.
+    minimumFractionDigits: 0,
+    // Mulai Rp1.000 tanpa desimal. Di bawah itu sampai 4 desimal, kalau tidak
+    // koin murah tampil "Rp 0" dan level TP/SL koin di bawah sekitar Rp100
+    // ikut terbulat (SL ketat dan SL longgar bisa tampil sama).
+    maximumFractionDigits: value >= 1000 ? 0 : 4,
   }).format(value);
+}
+
+/** Angka harga tanpa simbol mata uang, aturan desimal sama dengan formatRupiah. Contoh: 30.02 -> "30,02". */
+export function formatHarga(value: number): string {
+  return new Intl.NumberFormat("id-ID", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: value >= 1000 ? 0 : 4,
+  }).format(value);
+}
+
+/** Angka 1 desimal dengan koma (format Indonesia): 25.0 -> "25,0". */
+function koma(n: number): string {
+  return n.toFixed(1).replace(".", ",");
 }
 
 /**
@@ -30,13 +48,13 @@ export function formatRupiah(value: number): string {
  */
 export function formatVolumeSingkat(value: number): string {
   if (value >= 1_000_000_000_000) {
-    return `Rp${(value / 1_000_000_000_000).toFixed(1)} T`;
+    return `Rp${koma(value / 1_000_000_000_000)} T`;
   }
   if (value >= 1_000_000_000) {
-    return `Rp${(value / 1_000_000_000).toFixed(1)} M`;
+    return `Rp${koma(value / 1_000_000_000)} M`;
   }
   if (value >= 1_000_000) {
-    return `Rp${(value / 1_000_000).toFixed(1)} Jt`;
+    return `Rp${koma(value / 1_000_000)} Jt`;
   }
   return formatRupiah(value);
 }
