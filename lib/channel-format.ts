@@ -1,32 +1,21 @@
 import type { TopCoin } from "./indodax";
+import { formatRupiah, formatVolumeSingkat } from "./format";
 
 /**
- * Formatter khusus pesan CHANNEL Telegram (radar harian + scan-notify).
+ * Formatter pesan CHANNEL Telegram (radar harian + scan-notify).
  *
- * Sengaja dipisah dari lib/format.ts, karena file itu juga dipakai bot/webhook
- * (balasan command). Perbaikan tampilan di sisi channel di sini tidak mengubah
- * balasan bot sama sekali.
+ * Harga dan volume diteruskan ke lib/format.ts, jadi channel, bot, dan
+ * dashboard memakai aturan tampilan yang sama.
  */
 
 /**
- * Harga Rupiah untuk pesan channel dengan desimal adaptif, aturan sama dengan
- * dashboard (formatIDR): mulai Rp1.000 tanpa desimal (tampilan persis seperti
- * sebelumnya), di bawah itu sampai 4 desimal.
- *
- * Kenapa: sebelumnya pesan channel selalu maximumFractionDigits: 0. Koin murah
- * (SHIB, BONK, BTRNEW: sekitar Rp0,06 sampai Rp0,11) tampil "Rp 0", dan
- * TP1/TP2 koin di bawah sekitar Rp100 ikut kebulat sehingga persen yang
- * terlihat meleset dari yang benar-benar dilacak.
+ * Harga untuk pesan channel. Dulu implementasinya terpisah dari bot, dan
+ * perbaikan koin murah ("Rp 0") hanya masuk channel, jadi bot dan channel
+ * beda tampilan. Sekarang meneruskan ke lib/format.ts: desimal adaptif (mulai
+ * Rp1.000 tanpa desimal, di bawah itu sampai 4 desimal).
  */
 export function formatChannelPrice(value: number): string {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    // Dikunci eksplisit: default digit IDR bergantung versi ICU/Node (ICU lama
-    // bisa memaksa ",00"), jadi jangan diandalkan.
-    minimumFractionDigits: 0,
-    maximumFractionDigits: value >= 1000 ? 0 : 4,
-  }).format(value);
+  return formatRupiah(value);
 }
 
 /**
@@ -41,18 +30,11 @@ export function formatChannelPct(p: number): string {
 }
 
 /**
- * Volume singkat untuk pesan channel. Satuan dan ambangnya sama dengan
- * formatVolumeSingkat di lib/format.ts (yang juga dipakai bot, jadi tidak
- * diubah), bedanya desimal pakai koma sesuai format Indonesia: "Rp25,0 M",
- * bukan "Rp25.0 M". Di format Indonesia titik itu pemisah ribuan, jadi
- * "25.0" mudah terbaca salah dan tidak konsisten dengan harga di pesan yang sama.
+ * Volume singkat untuk pesan channel, desimal berkoma ("Rp25,0 M"). Meneruskan
+ * ke lib/format.ts supaya sama dengan balasan bot.
  */
 export function formatChannelVolume(value: number): string {
-  const satuan = (n: number) => n.toFixed(1).replace(".", ",");
-  if (value >= 1_000_000_000_000) return `Rp${satuan(value / 1_000_000_000_000)} T`;
-  if (value >= 1_000_000_000) return `Rp${satuan(value / 1_000_000_000)} M`;
-  if (value >= 1_000_000) return `Rp${satuan(value / 1_000_000)} Jt`;
-  return formatChannelPrice(value);
+  return formatVolumeSingkat(value);
 }
 
 // Escape karakter spesial Telegram Markdown (legacy): _ * ` [

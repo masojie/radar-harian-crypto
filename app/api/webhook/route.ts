@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCoinPrice, getTopVolumeCoinsInRange } from "@/lib/indodax";
-import { buildCoinPriceMessage, buildRadarMessage, formatVolumeSingkat } from "@/lib/format";
+import { buildCoinPriceMessage, buildRadarMessage, formatHarga, formatVolumeSingkat } from "@/lib/format";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { analyzeMultiTimeframe, MultiTimeframeSignal, calculateSpotLevels, SpotPositionLevels, scanBullishCoins, ScanResult, getWeeklyCandlesFull, detectSupportResistanceLevels, findNearestResistanceLevels, findNearestSupportLevels, RSI_OVERSOLD_THRESHOLD, MTF_TOTAL_WEIGHT, MTF_WEIGHTED_THRESHOLD, VOLUME_CONFIRMATION_THRESHOLD, SCAN_MIN_VOLUME_IDR, SCAN_MAX_VOLUME_IDR, SCAN_MAX_COINS, SR_MIN_TOUCHES } from "@/lib/indodax";
 
@@ -22,7 +22,8 @@ interface TelegramUpdate {
 
 
 function formatRupiah(n: number): string {
-  return new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
+  // Desimal adaptif untuk koin murah, satu aturan dengan channel dan dashboard (lib/format.ts).
+  return formatHarga(n);
 }
 
 // Rentang volume 24 jam yang dipakai /radar dan /scan. Diambil dari konstanta

@@ -1,4 +1,4 @@
-import { getLatestBullishScans, getOpenSignals, getClosedSignals } from "@/lib/supabase-public";
+import { getRecentBullishScans, getOpenSignals, getClosedSignals } from "@/lib/supabase-public";
 import { getLivePrices } from "@/lib/live-prices";
 import RadarTable from "./components/RadarTable";
 import OpenPositions from "./components/OpenPositions";
@@ -19,8 +19,8 @@ export const dynamic = "force-dynamic";
 export const revalidate = 60;
 
 export default async function Page() {
-  const [bullish, openPositions, closedSignals] = await Promise.all([
-    getLatestBullishScans(30),
+  const [feed, openPositions, closedSignals] = await Promise.all([
+    getRecentBullishScans(),
     getOpenSignals(50),
     getClosedSignals(100),
   ]);
@@ -30,9 +30,27 @@ export default async function Page() {
   const live = await getLivePrices(openPositions.map((p) => p.symbol));
 
   const nowMs = Date.now();
-  const view = buildRadarView(bullish, nowMs);
-  const lastSignalAt = view.latestScanAt;
-  const isLive = lastSignalAt !== null && nowMs - Date.parse(lastSignalAt) < LIVE_WINDOW_MS;
+  // Baris bullish_scans yang melahirkan posisi, dan posisi terbuka per coin.
+  // Dipakai untuk membedakan "sinyal baru" dari "pantauan" (kosakata channel).
+  const allSignals = [...openPositions, ...closedSignals];
+  const signalIds = new Set(allSignals.map((s) => s.signal_id));
+  const openBySymbol = new Map(openPositions.map((p) => [p.symbol, p] as const));
+  const view = buildRadarView(feed.rows, nowMs, { signalIds, windowHours: feed.windowHours });
+
+  // "Sinyal Xm lalu" = sinyal BARU terakhir (posisi dibuka dan disiarkan ke
+  // channel), bukan scan terakhir. Scan terakhir menentukan titik hijau.
+  const lastSignalAt = allSignals.reduce<string | null>(
+    (best, s) => (best === null || Date.parse(s.signaled_at) > Date.parse(best) ? s.signaled_at : best),
+    null
+  );
+  const lastScanAt = view.latestScanAt;
+  const isLive = lastScanAt !== null && nowMs - Date.parse(lastScanAt) < LIVE_WINDOW_MS;
+  const statusTitle = [
+    lastScanAt ? `Scan terakhir ${formatClock(lastScanAt)}` : null,
+    lastSignalAt ? `Sinyal baru ${formatClock(lastSignalAt)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <>
@@ -50,7 +68,7 @@ export default async function Page() {
 
           <p
             className={isLive ? "status status-live" : "status"}
-            title={lastSignalAt ? formatClock(lastSignalAt) : undefined}
+            title={statusTitle || undefined}
           >
             <span className="status-dot" aria-hidden="true" />
             {lastSignalAt ? `Sinyal ${timeAgo(lastSignalAt)}` : "Menunggu sinyal"}
@@ -61,7 +79,7 @@ export default async function Page() {
       <main id="konten" className="wrap">
         <TabShell
           openCount={openPositions.length}
-          radar={<RadarTable view={view} />}
+          radar={<RadarTable view={view} openBySymbol={openBySymbol} />}
           positions={<OpenPositions positions={openPositions} latestPrices={live.prices} />}
           history={<HistoryStats signals={closedSignals} />}
         />

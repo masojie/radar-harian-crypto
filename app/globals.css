@@ -1933,3 +1933,17 @@ button {
   font-size: 13px;
   font-weight: 600;
 }
+
+/* ---------- Status gate (Radar) ---------- */
+
+.hero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.chip-signal {
+  background: var(--up-bg);
+  color: var(--up);
+}

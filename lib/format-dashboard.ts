@@ -3,8 +3,12 @@
  * (titik ribuan, koma desimal) supaya konsisten dengan harga Rupiah.
  */
 
-export const RSI_DEEP = 25;
-export const RSI_OVERSOLD = 40;
+import { RSI_DEEP_THRESHOLD, RSI_OVERSOLD_THRESHOLD } from "./thresholds";
+
+// Satu sumber angka dengan bot (lib/thresholds.ts), supaya skala gauge dan
+// teks dashboard tidak bisa beda dari ambang scan yang sebenarnya.
+export const RSI_DEEP = RSI_DEEP_THRESHOLD;
+export const RSI_OVERSOLD = RSI_OVERSOLD_THRESHOLD;
 
 export function formatIDR(value: number): string {
   if (value >= 1000) {
