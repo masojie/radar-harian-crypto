@@ -1,4 +1,5 @@
 import type { CoinTrack, RadarView } from "@/lib/radar-view";
+import { RSI_OVERSOLD_THRESHOLD } from "@/lib/indodax";
 import {
   distancePct,
   formatIDR,
@@ -155,7 +156,7 @@ function QuietBanner({ latestScanAt }: { latestScanAt: string | null }) {
       <span className="empty-rings" aria-hidden="true" />
       <h2>Tidak ada coin oversold sekarang</h2>
       <p>
-        Scan jalan tiap 5 menit dan hanya menyimpan coin dengan RSI di bawah 35.
+        Scan jalan tiap 5 menit dan hanya menyimpan coin dengan RSI di bawah {RSI_OVERSOLD_THRESHOLD}.
         {latestScanAt ? ` Sinyal terakhir masuk ${timeAgo(latestScanAt)}.` : ""}
       </p>
     </div>
